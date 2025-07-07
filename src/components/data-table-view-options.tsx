@@ -15,10 +15,12 @@ import {
 
 interface DataTableViewOptionsProps<TData> {
   table: Table<TData>
+  isLoading?: boolean
 }
 
 export function DataTableViewOptions<TData>({
   table,
+  isLoading,
 }: DataTableViewOptionsProps<TData>) {
   return (
     <DropdownMenu>
@@ -27,6 +29,7 @@ export function DataTableViewOptions<TData>({
           variant="outline"
           size="sm"
           className="ml-auto hidden h-8 lg:flex"
+          disabled={isLoading}
         >
           <MixerHorizontalIcon className="mr-2 h-4 w-4" />
           View

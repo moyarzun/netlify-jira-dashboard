@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { MixerHorizontalIcon } from "@radix-ui/react-icons";
-import { useJira } from "@/contexts/JiraContext";
+import { useJira } from "@/hooks/useJira";
 
 export function DashboardOptions() {
   const {

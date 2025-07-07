@@ -1,323 +1,371 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import type { ReactNode, Dispatch, SetStateAction } from 'react';
-import axios from 'axios';
-import useLocalStorage from '@/hooks/useLocalStorage';
+"use client";
+
+import { createContext, useState, useMemo, useCallback, type ReactNode, useEffect } from 'react';
 import type { Task } from '@/data/schema';
+import { mapJiraIssueType } from '@/helpers/issue-type-mapper';
+import { mapJiraPriority } from '@/helpers/priority-mapper';
+import { mapJiraStatus } from '@/helpers/status-mapper';
+import { getAllSprintIdsFromChangelog } from '@/helpers/sprint-history';
+import type { IssueWithChangelog } from '@/helpers/sprint-history';
+import { isCarryover } from '@/helpers/is-carryover';
 
-// Define types
-interface JiraSprintField {
-  id: number;
-  name: string;
-  state: string;
-  boardId: number;
-}
-
-interface JiraIssue {
+// Define interfaces
+export interface JiraProject {
+  id: string;
   key: string;
-  fields: {
-    summary: string;
-    status: { name: string };
-    issuetype: { name: string };
-    priority: { name: string };
-    assignee: { displayName: string } | null;
-    customfield_10331?: number; // Story Points
-    customfield_10020?: JiraSprintField[] | null; // Sprint history (old)
-    customfield_10127?: JiraSprintField[] | null; // Sprint field (new)
-  };
+  name: string;
 }
 
-interface JiraConfig {
-  baseUrl: string;
-  email: string;
-  apiToken: string;
-  projectKey: string;
-  sprintId: string;
-}
-
-interface SprintInfo {
+export interface JiraSprint {
   id: number;
   name: string;
   state: string;
-  startDate: string;
-  endDate: string;
-  goal: string;
 }
 
-interface AssigneeStats {
+interface AssigneeStat {
   name: string;
   totalTasks: number;
   totalStoryPoints: number;
   averageComplexity: number;
-  tasks: Task[];
+}
+
+// Raw task format from our API before normalization
+interface ApiTask {
+  id: string;
+  title: string;
+  status: string;
+  label: string;
+  priority: string;
+  assignee: { name: string; avatarUrl: string; };
+  storyPoints: number;
+  complexity: number;
+  closedSprints?: JiraSprint[]; // Use specific type
 }
 
 interface JiraContextType {
+  projects: JiraProject[];
+  sprints: JiraSprint[];
   tasks: Task[];
-  sprintInfo: SprintInfo | null;
-  sprints: SprintInfo[];
-  isSprintsLoading: boolean;
-  formData: JiraConfig;
-  setFormData: Dispatch<SetStateAction<JiraConfig>>;
-  isLoading: boolean;
+  loading: boolean;
   error: string | null;
+  sprintInfo: JiraSprint | null;
   uniqueStatuses: string[];
-  assigneeStats: AssigneeStats[];
-  handleFetchIssues: () => Promise<void>;
-  handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  // New options
-  treatReviewDoneAsDone: boolean;
-  setTreatReviewDoneAsDone: Dispatch<SetStateAction<boolean>>;
+  assigneeStats: AssigneeStat[];
+  fetchProjects: () => Promise<void>;
+  fetchSprints: (projectKey: string) => Promise<void>;
+  fetchTasks: (sprintId: number) => Promise<void>;
+  forceUpdate: (sprintId: number) => Promise<void>;
+  clearTasks: () => void;
+  clearSprints: () => void;
+  getRawTaskById: (id: string) => ApiTask | undefined; // Add this function
   excludeCarryover: boolean;
-  setExcludeCarryover: Dispatch<SetStateAction<boolean>>;
+  setExcludeCarryover: (value: boolean) => void;
+  treatReviewDoneAsDone: boolean;
+  setTreatReviewDoneAsDone: (value: boolean) => void;
 }
 
-// Create context
 const JiraContext = createContext<JiraContextType | undefined>(undefined);
 
-// Helper functions (mapping)
-const mapJiraStatus = (jiraStatus: string, treatReviewDoneAsDone: boolean): Task['status'] => {
-  if (treatReviewDoneAsDone && jiraStatus === "Review Done") {
-    return "done";
+// Helper to get initial state from localStorage
+const getInitialState = <T,>(key: string, defaultValue: T): T => {
+  if (typeof window === 'undefined') {
+    return defaultValue;
   }
-  const statusMapping: { [key: string]: Task['status'] } = {
-    // English
-    "To Do": "todo",
-    "In Progress": "in progress",
-    "Done": "done",
-    "Backlog": "backlog",
-    "Canceled": "canceled",
-    "Selected for Development": "backlog",
-    "In Review": "in progress",
-    "Resolved": "done",
-    "Closed": "done",
-    "Reopened": "todo",
-    "Backlog Sprint": "todo",
-    "Review Done": "todo",
-
-    // Spanish
-    "Por hacer": "todo",
-    "En curso": "in progress",
-    "Finalizado": "done",
-    "Finalizada": "done",
-    "Resuelto": "done",
-    "Cerrado": "done",
-    "Reabierto": "todo",
-  };
-  return statusMapping[jiraStatus] || "todo"; // Default to 'todo'
+  try {
+    const storedValue = window.localStorage.getItem(key);
+    return storedValue ? JSON.parse(storedValue) : defaultValue;
+  } catch (error) {
+    console.error(`Error reading from localStorage for key "${key}":`, error);
+    return defaultValue;
+  }
 };
 
-const mapJiraPriority = (jiraPriority: string): Task['priority'] => {
-  const priorityMapping: { [key: string]: Task['priority'] } = {
-    "Lowest": "low",
-    "Low": "low",
-    "Medium": "medium",
-    "High": "high",
-    "Highest": "high",
-  };
-  return priorityMapping[jiraPriority] || "low";
-};
-
-const mapJiraIssueType = (issueType: string): Task['label'] => {
-    const labelMapping: { [key: string]: Task['label'] } = {
-        "Bug": "bug",
-        "Story": "feature",
-        "Task": "feature",
-        "Improvement": "feature",
-        "New Feature": "feature",
-        "Documentation": "documentation",
-    };
-    return labelMapping[issueType] || "feature";
-};
-
-// Create provider
-export function JiraProvider({ children }: { children: ReactNode }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [sprintInfo, setSprintInfo] = useLocalStorage<SprintInfo | null>("jiraSprintInfo", null);
-  const [sprints, setSprints] = useState<SprintInfo[]>([]);
-  const [isSprintsLoading, setIsSprintsLoading] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+export const JiraProvider = ({ children }: { children: ReactNode }) => {
+  const [projects, setProjects] = useState<JiraProject[]>([]);
+  const [sprints, setSprints] = useState<JiraSprint[]>([]);
+  const [rawTasks, setRawTasks] = useState<ApiTask[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [uniqueStatuses, setUniqueStatuses] = useState<string[]>([]);
-  const [assigneeStats, setAssigneeStats] = useState<AssigneeStats[]>([]);
-  const [rawIssues, setRawIssues] = useLocalStorage<JiraIssue[]>("jiraRawIssues", []);
+  const [sprintInfo, setSprintInfo] = useState<JiraSprint | null>(null);
 
-  // Dashboard options
-  const [treatReviewDoneAsDone, setTreatReviewDoneAsDone] = useLocalStorage<boolean>(
-    "treatReviewDoneAsDone",
-    true
+  // Initialize state from localStorage or use default
+  const [excludeCarryover, setExcludeCarryover] = useState<boolean>(
+    () => getInitialState('excludeCarryover', false)
   );
-  const [excludeCarryover, setExcludeCarryover] = useLocalStorage<boolean>(
-    "excludeCarryover",
-    false
+  const [treatReviewDoneAsDone, setTreatReviewDoneAsDone] = useState<boolean>(
+    () => getInitialState('treatReviewDoneAsDone', false)
   );
 
-  const [formData, setFormData] = useLocalStorage<JiraConfig>("jiraConfig", {
-    baseUrl: "",
-    email: "",
-    apiToken: "",
-    projectKey: "",
-    sprintId: "",
-  });
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleFetchSprints = useCallback(async () => {
-    if (!formData.projectKey || !formData.baseUrl || !formData.email || !formData.apiToken) {
-      return;
-    }
-    setIsSprintsLoading(true);
+  // Persist state to localStorage whenever it changes
+  useEffect(() => {
     try {
-      const response = await axios.post(
-        "/api/jira/sprints",
-        {
-          baseUrl: formData.baseUrl,
-          email: formData.email,
-          apiToken: formData.apiToken,
-          projectKey: formData.projectKey,
-        }
-      );
-      setSprints(response.data.sprints);
-    } catch (err) {
-      // Handle error silently for now, maybe add a toast later
-      console.error("Failed to fetch sprints:", err);
-      setSprints([]); // Clear sprints on error
-    } finally {
-      setIsSprintsLoading(false);
+      window.localStorage.setItem('excludeCarryover', JSON.stringify(excludeCarryover));
+    } catch (error) {
+      console.error('Failed to save excludeCarryover state to localStorage:', error);
     }
-  }, [formData.apiToken, formData.baseUrl, formData.email, formData.projectKey]);
+  }, [excludeCarryover]);
 
-  const handleFetchIssues = async () => {
-    setIsLoading(true);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('treatReviewDoneAsDone', JSON.stringify(treatReviewDoneAsDone));
+    } catch (error) {
+      console.error('Failed to save treatReviewDoneAsDone state to localStorage:', error);
+    }
+  }, [treatReviewDoneAsDone]);
+
+  // Memoize normalized tasks to re-process only when rawTasks or mapping options change
+  const normalizedTasks = useMemo(() => {
+    return rawTasks.map(task => {
+      // Cast seguro para obtener sprintHistory
+      const sprintHistory = getAllSprintIdsFromChangelog(task as IssueWithChangelog) || [];
+      return {
+        ...task,
+        status: mapJiraStatus(task.status, treatReviewDoneAsDone),
+        priority: mapJiraPriority(task.priority),
+        label: mapJiraIssueType(task.label),
+        sprintHistory, // array de strings, nunca undefined
+      };
+    });
+  }, [rawTasks, treatReviewDoneAsDone]);
+
+  const filteredTasks = useMemo(() => {
+    if (!excludeCarryover) {
+      return normalizedTasks;
+    }
+    const selectedSprintId = sprintInfo?.id?.toString();
+    const closedSprintIds = sprints.filter(s => s.state === "closed").map(s => s.id.toString());
+    return normalizedTasks.filter(task => {
+      if (!selectedSprintId) return true;
+      return !isCarryover({ task, selectedSprintId, closedSprintIds });
+    });
+  }, [normalizedTasks, excludeCarryover, sprintInfo, sprints]);
+
+  const getRawTaskById = useCallback((id: string): ApiTask | undefined => {
+    return rawTasks.find(task => task.id === id);
+  }, [rawTasks]);
+
+  const fetchProjects = useCallback(async () => {
+    setLoading(true);
     setError(null);
-
     try {
-      const response = await axios.post("/api/jira/issues", formData);
-      const jiraIssues: JiraIssue[] = response.data.issues;
-      const sprintInfoData: SprintInfo = response.data.sprintInfo;
-
-      setRawIssues(jiraIssues);
-      setSprintInfo(sprintInfoData);
-
-      // Extract unique statuses for debugging - this runs only once on fetch
-      const statuses = jiraIssues.map(issue => issue.fields.status.name);
-      const unique = [...new Set(statuses)];
-      setUniqueStatuses(unique);
-
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred";
-      setError(errorMessage);
-      setRawIssues([]); // Clear data on error
+      const response = await fetch('/api/jira/projects');
+      if (!response.ok) {
+        const { error: errMessage } = await response.json();
+        throw new Error(errMessage || 'Failed to fetch projects.');
+      }
+      const data = await response.json();
+      setProjects(data.projects || []);
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+      else setError("An unknown error occurred while fetching projects.");
+      setProjects([]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
+  }, []);
 
-  // Effect to process issues whenever rawIssues or options change
-  useEffect(() => {
-    // 1. Filter issues based on options
-    const filteredIssues = rawIssues.filter(issue => {
-      // Filter for carryover tasks based on customfield_10127
-      if (excludeCarryover) {
-        const sprintField = issue.fields.customfield_10127;
-        const currentSprintId = parseInt(formData.sprintId, 10);
-
-        if (Array.isArray(sprintField)) {
-          const isInCurrentSprint = sprintField.some(s => s.id === currentSprintId);
-
-          // Case 1: NOT Carryover - Only in the current sprint.
-          if (sprintField.length === 1 && isInCurrentSprint) {
-            return true; // Keep it
-          }
-
-          // Case 2: IS Carryover - In current sprint AND others.
-          if (sprintField.length > 1 && isInCurrentSprint) {
-            return false; // Exclude it
-          }
-        }
-        // Default to keeping the issue if the field is not as expected
-        return true;
+  const fetchSprints = useCallback(async (projectKey: string) => {
+    if (!projectKey) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/jira/sprints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectKey }),
+      });
+      if (!response.ok) {
+        const { error: errMessage } = await response.json();
+        throw new Error(errMessage || 'Failed to fetch sprints.');
       }
-      return true; // Keep the task if the filter is off.
-    });
+      const data = await response.json();
+      setSprints(data.sprints || []);
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+      else setError("An unknown error occurred while fetching sprints.");
+      setSprints([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    // 2. Map to Task format
-    const mappedTasks: Task[] = filteredIssues.map((issue) => ({
-      id: issue.key,
-      title: issue.fields.summary,
-      status: mapJiraStatus(issue.fields.status.name, treatReviewDoneAsDone),
-      label: mapJiraIssueType(issue.fields.issuetype.name),
-      priority: mapJiraPriority(issue.fields.priority.name),
-      raw: issue,
-    }));
-    setTasks(mappedTasks);
+  const fetchTasks = useCallback(async (sprintId: number) => {
+    if (!sprintId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const selectedSprint = sprints.find(s => s.id === sprintId);
+      setSprintInfo(selectedSprint || null);
 
-    // 3. Calculate stats per assignee from the filtered and mapped tasks
-    const stats: { [key: string]: { totalTasks: number; totalStoryPoints: number; tasks: Task[] } } = {};
+      const response = await fetch('/api/jira/issues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sprintId }),
+      });
+      if (!response.ok) {
+        const { error: errMessage } = await response.json();
+        throw new Error(errMessage || 'Failed to fetch tasks.');
+      }
+      const data = await response.json();
+      // Detectar si la respuesta viene de cache o de Jira
+      if (data.fromCache === true) {
+        console.log('[Jira] Datos obtenidos desde Cache');
+      } else if (data.fromJira === true) {
+        console.log('[Jira] Datos obtenidos directamente desde Jira');
+      } else {
+        console.log('[Jira] Origen de datos no especificado (puede ser Cache o Jira)');
+      }
+      
+      // The user log shows the API returns an object like { issues: { issues: [...], total: ... } }
+      // or sometimes just { issues: [...] }. We need to handle both structures.
+      const issues = data.issues && Array.isArray(data.issues.issues)
+        ? data.issues.issues
+        : Array.isArray(data.issues)
+        ? data.issues
+        : [];
 
-    mappedTasks.forEach(task => {
-      const assigneeName = task.raw.fields.assignee?.displayName || 'Unassigned';
-      const storyPoints = task.raw.fields.customfield_10331 || 0;
+      setRawTasks(issues);
+    } catch (err: unknown) {
+      console.error("Error fetching tasks:", err); // Added for better debugging
+      if (err instanceof Error) setError(err.message);
+      else setError("An unknown error occurred while fetching tasks.");
+      setRawTasks([]); // Clear raw tasks on error
+    } finally {
+      setLoading(false);
+    }
+  }, [sprints]);
 
+  const forceUpdate = useCallback(async (sprintId: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Tell the backend to force-refresh from Jira. The backend will
+      // update its cache (Blob) and return the fresh data in the response.
+      const response = await fetch(`/api/jira/issues?force=true`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sprintId }),
+      });
+
+      if (!response.ok) {
+        const { error: errMessage } = await response.json();
+        throw new Error(errMessage || 'Failed to force update tasks.');
+      }
+
+      const data = await response.json();
+      // Detectar si la respuesta viene de cache o de Jira
+      if (data.fromCache === true) {
+        console.log('[Jira] Datos obtenidos desde Cache (forceUpdate)');
+      } else if (data.fromJira === true) {
+        console.log('[Jira] Datos obtenidos directamente desde Jira (forceUpdate)');
+      } else {
+        console.log('[Jira] Origen de datos no especificado (forceUpdate)');
+      }
+      console.log("Raw data object from forceUpdate:", data);
+
+      // The user log shows the API returns an object like { issues: { issues: [...], total: ... } }
+      // or sometimes just { issues: [...] }. We need to handle both structures.
+      const issues = data.issues && Array.isArray(data.issues.issues)
+        ? data.issues.issues
+        : Array.isArray(data.issues)
+        ? data.issues
+        : [];
+
+      setRawTasks(issues);
+
+      // Also update sprintInfo, just like in fetchTasks
+      const selectedSprint = sprints.find(s => s.id === sprintId);
+      setSprintInfo(selectedSprint || null);
+
+    } catch (err: unknown) {
+      console.error("Error during force update:", err);
+      if (err instanceof Error) setError(err.message);
+      else setError("An unknown error occurred during the force update.");
+      setRawTasks([]); // Clear raw tasks on error
+    } finally {
+      setLoading(false);
+    }
+  }, [sprints]);
+
+  const clearTasks = useCallback(() => {
+    setRawTasks([]); // Clear raw tasks
+    setSprintInfo(null);
+  }, []);
+
+  const clearSprints = useCallback(() => {
+    setSprints([]);
+  }, []);
+
+  const uniqueStatuses = useMemo(() => {
+    const statuses = filteredTasks.map(task => task.status);
+    return [...new Set(statuses)];
+  }, [filteredTasks]);
+
+  const assigneeStats = useMemo(() => {
+    const stats: { [key: string]: { totalTasks: number; totalStoryPoints: number } } = {};
+
+    filteredTasks.forEach(task => {
+      const assigneeName = task.assignee?.name || "Unassigned";
       if (!stats[assigneeName]) {
-        stats[assigneeName] = { totalTasks: 0, totalStoryPoints: 0, tasks: [] };
+        stats[assigneeName] = { totalTasks: 0, totalStoryPoints: 0 };
       }
-
       stats[assigneeName].totalTasks += 1;
-      stats[assigneeName].totalStoryPoints += storyPoints;
-      stats[assigneeName].tasks.push(task);
+      stats[assigneeName].totalStoryPoints += typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0;
     });
 
-    const calculatedStats: AssigneeStats[] = Object.entries(stats).map(([name, data]) => ({
+    return Object.entries(stats).map(([name, data]) => ({
       name,
-      ...data,
-      averageComplexity: data.totalStoryPoints / data.totalTasks || 0,
+      totalTasks: data.totalTasks,
+      totalStoryPoints: data.totalStoryPoints,
+      averageComplexity: data.totalTasks > 0 ? data.totalStoryPoints / data.totalTasks : 0,
     }));
+  }, [filteredTasks]);
 
-    setAssigneeStats(calculatedStats);
+  // The context value that will be provided to consuming components.
+  // It's memoized to prevent unnecessary re-renders of consumers.
+  const value = useMemo(() => ({
+    projects,
+    sprints,
+    tasks: filteredTasks,
+    loading,
+    error,
+    sprintInfo,
+    uniqueStatuses,
+    assigneeStats,
+    fetchProjects,
+    fetchSprints,
+    fetchTasks,
+    forceUpdate,
+    clearTasks,
+    clearSprints,
+    getRawTaskById,
+    excludeCarryover,
+    treatReviewDoneAsDone,
+    setExcludeCarryover,
+    setTreatReviewDoneAsDone
+  }), [
+    projects,
+    sprints,
+    filteredTasks,
+    loading,
+    error,
+    sprintInfo,
+    uniqueStatuses,
+    assigneeStats,
+    fetchProjects,
+    fetchSprints,
+    fetchTasks,
+    forceUpdate,
+    clearTasks,
+    clearSprints,
+    getRawTaskById,
+    excludeCarryover,
+    treatReviewDoneAsDone,
+    setExcludeCarryover,
+    setTreatReviewDoneAsDone
+  ]);
 
-  }, [rawIssues, treatReviewDoneAsDone, excludeCarryover, formData.sprintId]);
+  return <JiraContext.Provider value={value}>{children}</JiraContext.Provider>;
+};
 
-
-  // Effect to fetch sprints when projectKey changes
-  useEffect(() => {
-    handleFetchSprints();
-  }, [handleFetchSprints]);
-
-  return (
-    <JiraContext.Provider
-      value={{
-        tasks,
-        sprintInfo,
-        sprints,
-        isSprintsLoading,
-        formData,
-        setFormData,
-        isLoading,
-        error,
-        uniqueStatuses,
-        assigneeStats,
-        handleFetchIssues,
-        handleInputChange,
-        // New options
-        treatReviewDoneAsDone,
-        setTreatReviewDoneAsDone,
-        excludeCarryover,
-        setExcludeCarryover,
-      }}
-    >
-      {children}
-    </JiraContext.Provider>
-  );
-}
-
-// Create hook
-export const useJira = () => {
-  const context = useContext(JiraContext);
-  if (context === undefined) {
-    throw new Error('useJira must be used within a JiraProvider');
-  }
-  return context;
-}
+export { JiraContext }; // Export only the context

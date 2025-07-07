@@ -9,6 +9,14 @@ export const taskSchema = z.object({
   label: z.string(),
   priority: z.string(),
   raw: z.any(), // To store the original raw JSON from Jira
+  assignee: z.object({
+    name: z.string(),
+    avatarUrl: z.string(),
+  }).optional(),
+  storyPoints: z.number().optional(),
+  complexity: z.number().optional(),
+  closedSprints: z.array(z.any()).optional(), // To track carry-over tasks
+  sprintHistory: z.array(z.string()).optional(), // Historial de sprints por changelog
 })
 
 export type Task = z.infer<typeof taskSchema>

@@ -6,17 +6,23 @@ import type { Table } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-import { DataTableViewOptions } from "@/components/data-table-view-options"
-
-import { priorities, statuses } from "@/data/data"
+import { priorities } from "@/data/data"
 import { DataTableFacetedFilter } from "./data-table-faceted-filter"
+
+interface StatusOption {
+  label: string
+  value: string
+  icon?: React.ComponentType<{ className?: string }>
+}
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>
+  statuses: StatusOption[]
 }
 
 export function DataTableToolbar<TData>({
   table,
+  statuses,
 }: DataTableToolbarProps<TData>) {
   const isFiltered = table.getState().columnFilters.length > 0
 
@@ -56,7 +62,6 @@ export function DataTableToolbar<TData>({
           </Button>
         )}
       </div>
-      <DataTableViewOptions table={table} />
     </div>
   )
 }
