@@ -27,6 +27,8 @@ interface AssigneeStat {
   totalTasks: number;
   totalStoryPoints: number;
   averageComplexity: number;
+  qaRework: number; // Retrabajos de QA
+  delaysMinutes: number; // Atrasos (Minutos)
 }
 
 // Raw task format from our API before normalization
@@ -51,6 +53,13 @@ interface JiraContextType {
   sprintInfo: JiraSprint | null;
   uniqueStatuses: string[];
   assigneeStats: AssigneeStat[];
+  assigneeStatsBySprint: AssigneeSprintStats; // Nuevo: stats por sprint y dev
+  setAssigneeSprintStat: (
+    sprintId: string,
+    assigneeName: string,
+    field: 'qaRework' | 'delaysMinutes',
+    value: number
+  ) => void; // Nuevo setter para edición
   fetchProjects: () => Promise<void>;
   fetchSprints: (projectKey: string) => Promise<void>;
   fetchTasks: (sprintId: number) => Promise<void>;
@@ -62,6 +71,32 @@ interface JiraContextType {
   setExcludeCarryover: (value: boolean) => void;
   treatReviewDoneAsDone: boolean;
   setTreatReviewDoneAsDone: (value: boolean) => void;
+  sprintQuality: number;
+  setSprintQuality: (value: number) => void;
+  historicalReworkRate: number;
+  setHistoricalReworkRate: (value: number) => void;
+  perfectWorkKpiLimit: number;
+  setPerfectWorkKpiLimit: (value: number) => void;
+  weightStoryPoints: number;
+  setWeightStoryPoints: (value: number) => void;
+  weightTasks: number;
+  setWeightTasks: (value: number) => void;
+  weightComplexity: number;
+  setWeightComplexity: (value: number) => void;
+  weightRework: number;
+  setWeightRework: (value: number) => void;
+  weightDelays: number;
+  setWeightDelays: (value: number) => void;
+}
+
+// Nueva estructura para stats por sprint y desarrollador
+interface AssigneeSprintStats {
+  [sprintId: string]: {
+    [assigneeName: string]: {
+      qaRework: number;
+      delaysMinutes: number;
+    };
+  };
 }
 
 const JiraContext = createContext<JiraContextType | undefined>(undefined);
@@ -80,6 +115,13 @@ const getInitialState = <T,>(key: string, defaultValue: T): T => {
   }
 };
 
+// Helper para obtener valor numérico de localStorage con fallback
+const getKpiNumber = (key: string, fallback: number) => {
+  if (typeof window === 'undefined') return fallback;
+  const v = window.localStorage.getItem(key);
+  return v !== null && !isNaN(Number(v)) ? Number(v) : fallback;
+};
+
 export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const [projects, setProjects] = useState<JiraProject[]>([]);
   const [sprints, setSprints] = useState<JiraSprint[]>([]);
@@ -95,6 +137,54 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const [treatReviewDoneAsDone, setTreatReviewDoneAsDone] = useState<boolean>(
     () => getInitialState('treatReviewDoneAsDone', false)
   );
+
+  // KPI: valores y setters globales
+  const [sprintQuality, setSprintQuality] = useState<number>(() => getKpiNumber('kpi_sprintQuality', 95));
+  const [historicalReworkRate, setHistoricalReworkRate] = useState<number>(() => getKpiNumber('kpi_historicalReworkRate', 10));
+  const [perfectWorkKpiLimit, setPerfectWorkKpiLimit] = useState<number>(() => getKpiNumber('kpi_perfectWorkKpiLimit', 100));
+  const [weightStoryPoints, setWeightStoryPoints] = useState<number>(() => getKpiNumber('kpi_weightStoryPoints', 1));
+  const [weightTasks, setWeightTasks] = useState<number>(() => getKpiNumber('kpi_weightTasks', 1));
+  const [weightComplexity, setWeightComplexity] = useState<number>(() => getKpiNumber('kpi_weightComplexity', 1));
+  const [weightRework, setWeightRework] = useState<number>(() => getKpiNumber('kpi_weightRework', 1));
+  const [weightDelays, setWeightDelays] = useState<number>(() => getKpiNumber('kpi_weightDelays', 1));
+
+  // Estado para stats por sprint y desarrollador
+  const [assigneeStatsBySprint, setAssigneeStatsBySprint] = useState<AssigneeSprintStats>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const stored = window.localStorage.getItem('assigneeStatsBySprint');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Persistir cambios en localStorage
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('assigneeStatsBySprint', JSON.stringify(assigneeStatsBySprint));
+    } catch (e) {
+      console.error('Error guardando assigneeStatsBySprint:', e);
+    }
+  }, [assigneeStatsBySprint]);
+
+  // Setter para actualizar stats de un desarrollador en un sprint
+  const setAssigneeSprintStat = useCallback((sprintId: string, assigneeName: string, field: 'qaRework' | 'delaysMinutes', value: number) => {
+    setAssigneeStatsBySprint(prev => {
+      const prevSprint = prev[sprintId] || {};
+      const prevAssignee = prevSprint[assigneeName] || { qaRework: 0, delaysMinutes: 0 };
+      return {
+        ...prev,
+        [sprintId]: {
+          ...prevSprint,
+          [assigneeName]: {
+            ...prevAssignee,
+            [field]: value,
+          },
+        },
+      };
+    });
+  }, []);
 
   // Persist state to localStorage whenever it changes
   useEffect(() => {
@@ -112,6 +202,16 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       console.error('Failed to save treatReviewDoneAsDone state to localStorage:', error);
     }
   }, [treatReviewDoneAsDone]);
+
+  // Sincronizar con localStorage
+  useEffect(() => { localStorage.setItem('kpi_sprintQuality', String(sprintQuality)); }, [sprintQuality]);
+  useEffect(() => { localStorage.setItem('kpi_historicalReworkRate', String(historicalReworkRate)); }, [historicalReworkRate]);
+  useEffect(() => { localStorage.setItem('kpi_perfectWorkKpiLimit', String(perfectWorkKpiLimit)); }, [perfectWorkKpiLimit]);
+  useEffect(() => { localStorage.setItem('kpi_weightStoryPoints', String(weightStoryPoints)); }, [weightStoryPoints]);
+  useEffect(() => { localStorage.setItem('kpi_weightTasks', String(weightTasks)); }, [weightTasks]);
+  useEffect(() => { localStorage.setItem('kpi_weightComplexity', String(weightComplexity)); }, [weightComplexity]);
+  useEffect(() => { localStorage.setItem('kpi_weightRework', String(weightRework)); }, [weightRework]);
+  useEffect(() => { localStorage.setItem('kpi_weightDelays', String(weightDelays)); }, [weightDelays]);
 
   // Memoize normalized tasks to re-process only when rawTasks or mapping options change
   const normalizedTasks = useMemo(() => {
@@ -253,15 +353,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const data = await response.json();
-      // Detectar si la respuesta viene de cache o de Jira
-      if (data.fromCache === true) {
-        console.log('[Jira] Datos obtenidos desde Cache (forceUpdate)');
-      } else if (data.fromJira === true) {
-        console.log('[Jira] Datos obtenidos directamente desde Jira (forceUpdate)');
-      } else {
-        console.log('[Jira] Origen de datos no especificado (forceUpdate)');
-      }
-      console.log("Raw data object from forceUpdate:", data);
 
       // The user log shows the API returns an object like { issues: { issues: [...], total: ... } }
       // or sometimes just { issues: [...] }. We need to handle both structures.
@@ -313,13 +404,26 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       stats[assigneeName].totalStoryPoints += typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0;
     });
 
-    return Object.entries(stats).map(([name, data]) => ({
-      name,
-      totalTasks: data.totalTasks,
-      totalStoryPoints: data.totalStoryPoints,
-      averageComplexity: data.totalTasks > 0 ? data.totalStoryPoints / data.totalTasks : 0,
-    }));
-  }, [filteredTasks]);
+    const sprintId = sprintInfo?.id?.toString() || '';
+    return Object.entries(stats).map(([name, data]) => {
+      const sprintStats = assigneeStatsBySprint[sprintId]?.[name] || { qaRework: 0, delaysMinutes: 0 };
+      return {
+        name,
+        totalTasks: data.totalTasks,
+        totalStoryPoints: data.totalStoryPoints,
+        averageComplexity: data.totalTasks > 0 ? data.totalStoryPoints / data.totalTasks : 0,
+        qaRework: sprintStats.qaRework,
+        delaysMinutes: sprintStats.delaysMinutes,
+      };
+    });
+  }, [filteredTasks, assigneeStatsBySprint, sprintInfo]);
+
+  // Validación: suma de ponderaciones debe ser exactamente 100
+  const weightsSum = useMemo(() => {
+    return weightStoryPoints + weightTasks + weightComplexity + weightRework + weightDelays;
+  }, [weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays]);
+
+  const weightsAreValid = useMemo(() => weightsSum === 100, [weightsSum]);
 
   // The context value that will be provided to consuming components.
   // It's memoized to prevent unnecessary re-renders of consumers.
@@ -332,6 +436,8 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     sprintInfo,
     uniqueStatuses,
     assigneeStats,
+    assigneeStatsBySprint, // Exponer para modales
+    setAssigneeSprintStat, // Setter para edición
     fetchProjects,
     fetchSprints,
     fetchTasks,
@@ -342,7 +448,25 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     excludeCarryover,
     treatReviewDoneAsDone,
     setExcludeCarryover,
-    setTreatReviewDoneAsDone
+    setTreatReviewDoneAsDone,
+    sprintQuality,
+    setSprintQuality,
+    historicalReworkRate,
+    setHistoricalReworkRate,
+    perfectWorkKpiLimit,
+    setPerfectWorkKpiLimit,
+    weightStoryPoints,
+    setWeightStoryPoints,
+    weightTasks,
+    setWeightTasks,
+    weightComplexity,
+    setWeightComplexity,
+    weightRework,
+    setWeightRework,
+    weightDelays,
+    setWeightDelays,
+    weightsSum, // suma total de ponderaciones
+    weightsAreValid, // booleano de validez
   }), [
     projects,
     sprints,
@@ -352,6 +476,8 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     sprintInfo,
     uniqueStatuses,
     assigneeStats,
+    assigneeStatsBySprint,
+    setAssigneeSprintStat,
     fetchProjects,
     fetchSprints,
     fetchTasks,
@@ -361,8 +487,24 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     getRawTaskById,
     excludeCarryover,
     treatReviewDoneAsDone,
-    setExcludeCarryover,
-    setTreatReviewDoneAsDone
+    sprintQuality,
+    setSprintQuality,
+    historicalReworkRate,
+    setHistoricalReworkRate,
+    perfectWorkKpiLimit,
+    setPerfectWorkKpiLimit,
+    weightStoryPoints,
+    setWeightStoryPoints,
+    weightTasks,
+    setWeightTasks,
+    weightComplexity,
+    setWeightComplexity,
+    weightRework,
+    setWeightRework,
+    weightDelays,
+    setWeightDelays,
+    weightsSum,
+    weightsAreValid,
   ]);
 
   return <JiraContext.Provider value={value}>{children}</JiraContext.Provider>;

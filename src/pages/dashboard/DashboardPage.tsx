@@ -1,23 +1,59 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useJira } from "@/hooks/useJira";
 import { StatCard } from "@/components/StatCard";
-import { CheckCircle, ListTodo, Star, Search } from "lucide-react";
+import { CheckCircle, ListTodo, Star } from "lucide-react";
 import type { Task } from "@/data/schema";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { AssigneeTasksModal } from "@/components/AssigneeTasksModal";
+import { DashboardOptionsModal } from "@/components/DashboardOptionsModal";
 
 interface AssigneeStat {
   name: string;
   totalTasks: number;
   totalStoryPoints: number;
   averageComplexity: number;
+  qaRework: number; // Retrabajos de QA
+  delaysMinutes: number; // Atrasos (Minutos)
 }
 
 export const DashboardPage = () => {
   const { tasks, sprintInfo, uniqueStatuses, loading, assigneeStats } = useJira();
   const [isDebugVisible, setIsDebugVisible] = useState(false);
+  const [assigneeStatsCache, setAssigneeStatsCache] = useState<Record<string, { qaRework: number; delaysMinutes: number }>>({});
+
+  useEffect(() => {
+    // Cargar valores de QA y Atrasos desde localStorage para todos los asignados
+    const cache: Record<string, { qaRework: number; delaysMinutes: number }> = {};
+    assigneeStats.forEach(stat => {
+      const key = `assigneeStats_${stat.name}`;
+      const cached = localStorage.getItem(key);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          cache[stat.name] = {
+            qaRework: Number(parsed.qaRework) || 0,
+            delaysMinutes: Number(parsed.delaysMinutes) || 0,
+          };
+        } catch {
+          cache[stat.name] = { qaRework: 0, delaysMinutes: 0 };
+        }
+      } else {
+        cache[stat.name] = { qaRework: 0, delaysMinutes: 0 };
+      }
+    });
+    setAssigneeStatsCache(cache);
+  }, [assigneeStats]);
+
+  // Función para actualizar el cache y localStorage desde el modal
+  const handleUpdateAssigneeStats = useCallback((assigneeName: string, qaRework: number, delaysMinutes: number) => {
+    setAssigneeStatsCache(prev => ({
+      ...prev,
+      [assigneeName]: { qaRework, delaysMinutes },
+    }));
+    localStorage.setItem(`assigneeStats_${assigneeName}`, JSON.stringify({ qaRework, delaysMinutes }));
+  }, []);
 
   if (loading) {
     return <div>Loading dashboard...</div>;
@@ -40,9 +76,7 @@ export const DashboardPage = () => {
           Dashboard: {sprintInfo?.name || "No Sprint Selected"}
         </h2>
         <div className="flex items-center space-x-2">
-          <Button variant="outline" size="icon" onClick={() => setIsDebugVisible(!isDebugVisible)}>
-            <Search className="h-4 w-4" />
-          </Button>
+          <DashboardOptionsModal />
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -87,9 +121,21 @@ export const DashboardPage = () => {
                     <span>Avg. Complexity:</span>
                     <span className="font-medium text-foreground">{stat.averageComplexity.toFixed(2)}</span>
                   </div>
-                  <AssigneeTasksModal assigneeName={stat.name} tasks={assigneeTasks}>
+                  <div className="flex justify-between">
+                    <span>Retrabajos de QA:</span>
+                    <span className="font-medium text-foreground">{assigneeStatsCache[stat.name]?.qaRework ?? stat.qaRework}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Atrasos (Minutos):</span>
+                    <span className="font-medium text-foreground">{assigneeStatsCache[stat.name]?.delaysMinutes ?? stat.delaysMinutes}</span>
+                  </div>
+                  <AssigneeTasksModal
+                    assigneeName={stat.name}
+                    tasks={assigneeTasks}
+                    onUpdateStats={handleUpdateAssigneeStats}
+                  >
                     <Button variant="outline" size="sm" className="mt-2 w-full">
-                      View Details
+                      Details
                     </Button>
                   </AssigneeTasksModal>
                 </div>
