@@ -1,0 +1,59 @@
+name: ESLint Check
+
+on:
+  push:
+    branches: [ main, test, dev ]
+  pull_request:
+    branches: [ main, test, dev ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Find services with package.json
+        id: find-services
+        run: |
+          echo "services=$(find ./services -name "package.json" -not -path "*/node_modules/*" -not -path "./services/api-gateway-local/*" | xargs dirname | jq -R -s -c 'split("\n") | map(select(. != ""))' | jq -c)" >> $GITHUB_OUTPUT
+      
+      - name: Install dependencies and run lint
+        run: |
+          SERVICES=$(echo '${{ steps.find-services.outputs.services }}' | jq -c '.[]' | tr -d '"')
+          for SERVICE in $SERVICES; do
+            echo "==== Linting $SERVICE ===="
+            cd "$GITHUB_WORKSPACE/$SERVICE"
+            
+            # Install dependencies
+            npm install
+            
+            # Check if eslint.config.js exists - it's the new flat config format that requires ESM
+            if [ -f "eslint.config.js" ]; then
+              echo "Detected eslint.config.js - Running ESLint with ESM configuration"
+              
+              # Run ESLint
+              npm run lint
+              LINT_RESULT=$?
+              
+              # Check lint result
+              if [ $LINT_RESULT -ne 0 ]; then
+                echo "ESLint failed in $SERVICE"
+                exit 1
+              fi
+            else
+              echo "Running standard ESLint"
+              npm run lint
+              if [ $? -ne 0 ]; then
+                echo "ESLint failed in $SERVICE"
+                exit 1
+              fi
+            fi
+          done
