@@ -87,6 +87,8 @@ interface JiraContextType {
   setWeightRework: (value: number) => void;
   weightDelays: number;
   setWeightDelays: (value: number) => void;
+  weightsSum: number;
+  weightsAreValid: boolean;
 }
 
 // Nueva estructura para stats por sprint y desarrollador
@@ -310,6 +312,17 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       // Detectar si la respuesta viene de cache o de Jira
       if (data.fromCache === true) {
         console.log('[Jira] Datos obtenidos desde Cache');
+        // Guardar el ID del sprint en localStorage como parte de los sprints en caché
+        try {
+          const cacheKey = 'cachedSprintIds';
+          const prev: number[] = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+          if (!prev.includes(sprintId)) {
+            const updated = [...prev, sprintId];
+            localStorage.setItem(cacheKey, JSON.stringify(updated));
+          }
+        } catch (e) {
+          console.error('Error guardando cachedSprintIds en localStorage', e);
+        }
       } else if (data.fromJira === true) {
         console.log('[Jira] Datos obtenidos directamente desde Jira');
       } else {

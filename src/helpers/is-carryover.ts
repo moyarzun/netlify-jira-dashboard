@@ -1,6 +1,6 @@
 // Helper para centralizar la lógica de carryover
 import type { Task } from '@/data/schema';
-import type { JiraSprint } from '@/contexts/JiraContext';
+// import type { JiraSprint } from '@/contexts/JiraContext';
 
 export type IsCarryoverParams = {
   task: Pick<Task, 'sprintHistory'>;

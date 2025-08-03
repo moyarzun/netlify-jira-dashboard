@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User } from "lucide-react";
 import { Link } from "react-router-dom";
-
+// Archivo eliminado: este componente ya no se utiliza en la aplicación.
 const UserProfile = () => {
   const logout = () => {
     // Implement logout logic here

@@ -69,7 +69,7 @@ export function JiraConfigurator() {
     } catch (error) {
       toast({
         title: "Save Failed",
-        description: error.message,
+        description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
     } finally {

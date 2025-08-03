@@ -228,7 +228,7 @@ export function DashboardOptionsModal() {
           <div className="px-6 pb-4 flex flex-col gap-2">
             <Button
               className="w-full"
-              variant="primary"
+              variant="default"
               aria-label="Guardar valores de KPI"
               disabled={!weightsAreValid}
               onClick={handleSave}

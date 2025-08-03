@@ -17,8 +17,8 @@ const Sidebar = ({ isSidebarOpen, toggleSidebar }: SidebarProps) => {
   const content = (
     <>
       <div className="flex items-center justify-center h-16 border-b">
-        <Link to="/" className="text-2xl font-bold text-primary">
-          Logo
+        <Link to="/" className="flex items-center justify-center h-full" aria-label="Inicio">
+          <img src="/logotipo.png" alt="OneApp logo" className="h-10 w-auto" />
         </Link>
       </div>
       <ScrollArea className="flex-1">
@@ -42,10 +42,11 @@ const Sidebar = ({ isSidebarOpen, toggleSidebar }: SidebarProps) => {
               <DrawerTitle>
                 <Link
                   to="/"
-                  className="text-2xl font-bold text-primary"
+                  className="flex items-center justify-center h-full"
+                  aria-label="Inicio"
                   onClick={toggleSidebar}
                 >
-                  Logo
+                  <img src="/logotipo.png" alt="OneApp logo" className="h-10 w-auto" />
                 </Link>
               </DrawerTitle>
             </DrawerHeader>

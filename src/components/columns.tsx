@@ -2,7 +2,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table"
 
-import { Badge } from "@/components/ui/badge"
+// import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
@@ -95,7 +95,7 @@ export const columns: ColumnDef<Task>[] = [
 		},
 		filterFn: (row, id, value) => {
 			const mappedStatus = mapJiraStatus(row.getValue(id), false);
-      return value.includes(mappedStatus);
+	  return value.includes(mappedStatus);
 		},
 	},
 	{

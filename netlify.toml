@@ -6,8 +6,10 @@
   # Directorio donde se publica el resultado del build.
   publish = "dist"
 
+
 [dev]
   command = "vite"
+  functions = "netlify/functions"
 
 [functions]
   [functions."*"]
@@ -18,6 +20,8 @@
 path = "/api/*"
 function = "jira-proxy"
 excludedPattern = "^/netlify/blobs/"
+
+
 
 [[redirects]]
   from = "/*"

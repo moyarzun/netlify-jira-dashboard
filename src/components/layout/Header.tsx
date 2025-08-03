@@ -1,6 +1,5 @@
 import { Menu as MenuIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import UserProfile from "./UserProfile";
 import JiraSettingsPopover from "./JiraSettingsPopover";
 import SprintSelector from "./SprintSelector";
 import { ViewOptions } from "@/components/view-options";
@@ -22,7 +21,6 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
       <div className="flex items-center space-x-2">
         <ViewOptions />
         <JiraSettingsPopover />
-        <UserProfile />
       </div>
     </header>
   );

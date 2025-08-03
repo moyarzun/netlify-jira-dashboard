@@ -1,9 +1,10 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { ForceJiraUpdateButton } from "@/components/ForceJiraUpdateButton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useJira } from "@/hooks/useJira";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 const SprintSelector = () => {
   const { 
@@ -20,6 +21,8 @@ const SprintSelector = () => {
 
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | undefined>(undefined);
   const [selectedSprintId, setSelectedSprintId] = useState<string | undefined>(undefined);
+  // Ref para saber si se debe seleccionar el sprint activo tras actualizar desde Jira
+  const shouldSelectActiveSprint = useRef(false);
 
   // 1. Fetch projects on initial component mount
   useEffect(() => {
@@ -37,9 +40,20 @@ const SprintSelector = () => {
     }
   }, [projects, fetchSprints]);
 
-  // 3. Once sprints are loaded for the selected project, try to restore the last selected sprint
+  // 3. Once sprints are loaded for the selected project, try to restore el último sprint o seleccionar el activo si corresponde
   useEffect(() => {
     if (sprints.length > 0) {
+      if (shouldSelectActiveSprint.current) {
+        // Buscar el sprint activo
+        const activeSprint = sprints.find(s => s.state === "active");
+        if (activeSprint) {
+          setSelectedSprintId(String(activeSprint.id));
+          sessionStorage.setItem("lastSprintId", String(activeSprint.id));
+          fetchTasks(activeSprint.id);
+        }
+        shouldSelectActiveSprint.current = false;
+        return;
+      }
       const lastSprintId = sessionStorage.getItem("lastSprintId");
       if (lastSprintId && sprints.some(s => String(s.id) === lastSprintId)) {
         setSelectedSprintId(lastSprintId);
@@ -81,6 +95,19 @@ const SprintSelector = () => {
     }
   };
 
+  // Handler para el botón "Actualizar desde Jira" que fuerza la selección del sprint activo
+  const handleForceJiraUpdate = async () => {
+    // Marcar que tras actualizar sprints se debe seleccionar el activo
+    shouldSelectActiveSprint.current = true;
+    // Llamar a la lógica original del botón
+    if (typeof fetchProjects === 'function') {
+      await fetchProjects();
+    }
+    if (typeof fetchSprints === 'function' && selectedProjectKey) {
+      await fetchSprints(selectedProjectKey);
+    }
+  };
+
   return (
     <div className="flex items-center gap-4">
       <Select 
@@ -109,17 +136,32 @@ const SprintSelector = () => {
           <SelectValue placeholder={loading && sprints.length === 0 ? "Loading..." : "Select a Sprint"} />
         </SelectTrigger>
         <SelectContent>
-          {sprints.map((sprint) => (
-            <SelectItem key={sprint.id} value={String(sprint.id)}>
-              {sprint.name} ({sprint.state})
-            </SelectItem>
-          ))}
+          {sprints.map((sprint) => {
+            let estado = sprint.state;
+            if (estado === "active") estado = "Activo";
+            else if (estado === "closed") estado = "Cerrado";
+            else if (estado === "future") estado = "Futuro";
+            return (
+              <SelectItem key={sprint.id} value={String(sprint.id)}>
+                {sprint.name} ({estado})
+              </SelectItem>
+            );
+          })}
         </SelectContent>
       </Select>
 
       <Button onClick={handleUpdate} disabled={!selectedSprintId || loading}>
         {loading ? "Updating..." : "Update"}
       </Button>
+      <ForceJiraUpdateButton
+        sprintId={selectedSprintId ? Number(selectedSprintId) : undefined}
+        label="Actualizar desde Jira"
+        selectedProjectKey={selectedProjectKey}
+        fetchProjects={fetchProjects}
+        fetchSprints={fetchSprints}
+        // Sobrescribimos el onClick para forzar selección de sprint activo
+        onAfterUpdate={handleForceJiraUpdate}
+      />
     </div>
   );
 };

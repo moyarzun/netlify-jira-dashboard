@@ -1,6 +1,6 @@
 "use client"
 
-import * as React from "react"
+// import * as React from "react"
 import { useContext } from "react";
 import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu"
 import { MixerHorizontalIcon } from "@radix-ui/react-icons"
@@ -35,7 +35,7 @@ export function ViewOptions() {
         <Button
           variant="outline"
           size="sm"
-          className="ml-auto hidden h-8 lg:flex"
+          className="ml-auto flex h-8"
         >
           <MixerHorizontalIcon className="mr-2 h-4 w-4" />
           View
