@@ -5,6 +5,8 @@
   command = "vite build"
   # Directorio donde se publica el resultado del build.
   publish = "dist"
+  # Directorio donde se encuentran las edge functions.
+  edge_functions = "netlify/edge-functions"
 
 
 [dev]
