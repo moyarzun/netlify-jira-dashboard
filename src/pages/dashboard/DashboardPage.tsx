@@ -35,6 +35,8 @@ export const DashboardPage = () => {
     perfectWorkKpiLimit,
     historicalReworkRate,
     weightsSum,
+    excludeCarryover,
+    treatReviewDoneAsDone,
   } = useJira();
 
   const [kpis, setKpis] = useState<Record<string, number>>({});
