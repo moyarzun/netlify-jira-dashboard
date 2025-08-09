@@ -406,15 +406,16 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   }, [filteredTasks]);
 
   const assigneeStats = useMemo(() => {
-    const stats: { [key: string]: { totalTasks: number; totalStoryPoints: number } } = {};
+    const stats: { [key: string]: { totalTasks: number; totalStoryPoints: number; totalComplexity: number } } = {};
 
     filteredTasks.forEach(task => {
       const assigneeName = task.assignee?.name || "Unassigned";
       if (!stats[assigneeName]) {
-        stats[assigneeName] = { totalTasks: 0, totalStoryPoints: 0 };
+        stats[assigneeName] = { totalTasks: 0, totalStoryPoints: 0, totalComplexity: 0 };
       }
       stats[assigneeName].totalTasks += 1;
       stats[assigneeName].totalStoryPoints += typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0;
+      stats[assigneeName].totalComplexity += typeof task.complexity === "number" && !isNaN(task.complexity) ? task.complexity : 0;
     });
 
     const sprintId = sprintInfo?.id?.toString() || '';
@@ -424,7 +425,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
         name,
         totalTasks: data.totalTasks,
         totalStoryPoints: data.totalStoryPoints,
-        averageComplexity: data.totalTasks > 0 ? data.totalStoryPoints / data.totalTasks : 0,
+        averageComplexity: data.totalTasks > 0 ? data.totalComplexity / data.totalTasks : 0,
         qaRework: sprintStats.qaRework,
         delaysMinutes: sprintStats.delaysMinutes,
       };
