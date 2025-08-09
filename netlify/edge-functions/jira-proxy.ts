@@ -290,6 +290,9 @@ export default async (request: Request, context: Context) => {
 
       const transformedIssues = allIssues.map(transformIssueData);
 
+      // ADD THIS LOG
+      context.log("Transformed Issues Complexity Check:", transformedIssues.map(issue => ({ id: issue.id, complexity: issue.complexity })));
+
       await cacheStore.setJSON(cacheKey, transformedIssues);
       // Siempre responder con { issues: [...] }
       return jsonResponse(200, { issues: transformedIssues });
