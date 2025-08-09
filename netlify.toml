@@ -7,11 +7,12 @@
   publish = "dist"
   # Directorio donde se encuentran las edge functions.
   edge_functions = "netlify/edge-functions"
+  # Directorio donde se encuentran las serverless functions.
+  functions = "netlify/functions"
 
 
 [dev]
   command = "vite"
-  functions = "netlify/functions"
 
 [functions]
   [functions."*"]
