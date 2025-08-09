@@ -65,7 +65,7 @@ export const DashboardPage = () => {
 
     // Leer KPIs desde localStorage por sprint
     const sprintId = sprintInfo?.id ? String(sprintInfo.id) : 'unknown';
-    const kpiCacheKey = `kpis_by_sprint_${sprintId}`;
+    const kpiCacheKey = `kpis_by_sprint_${sprintId}_carryover_${excludeCarryover}_reviewdone_${treatReviewDoneAsDone}`;
     const kpiCacheRaw = localStorage.getItem(kpiCacheKey);
     let kpiCache: Record<string, number> = {};
     if (kpiCacheRaw) {
