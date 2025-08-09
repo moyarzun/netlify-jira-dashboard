@@ -37,6 +37,10 @@ export const DashboardPage = () => {
     weightsSum,
     excludeCarryover,
     treatReviewDoneAsDone,
+    reworkKpiUpperLimit,
+    totalStoryPointsTarget,
+    totalTasksTarget,
+    sprintAverageComplexityTarget,
   } = useJira();
 
   const [kpis, setKpis] = useState<Record<string, number>>({});
@@ -92,6 +96,10 @@ export const DashboardPage = () => {
             perfectWorkKpiLimit,
             historicalReworkRate,
             weightsSum,
+            reworkKpiUpperLimit,
+            totalStoryPointsTarget,
+            totalTasksTarget,
+            sprintAverageComplexityTarget,
           };
           const response = await axios.post("/api/kpi", {
             assigneeStats: assigneeStats.map(stat => ({
@@ -120,7 +128,7 @@ export const DashboardPage = () => {
         fetchKpis();
       }
     }
-  }, [assigneeStats, sprintInfo?.id, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, perfectWorkKpiLimit, historicalReworkRate, weightsSum]);
+  }, [assigneeStats, sprintInfo?.id, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, perfectWorkKpiLimit, historicalReworkRate, weightsSum, reworkKpiUpperLimit, totalStoryPointsTarget, totalTasksTarget, sprintAverageComplexityTarget]);
 
   // Función para actualizar el cache y localStorage desde el modal
   const handleUpdateAssigneeStats = useCallback((assigneeName: string, qaRework: number, delaysMinutes: number) => {

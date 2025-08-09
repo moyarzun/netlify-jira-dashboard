@@ -17,26 +17,46 @@ interface KpiConfig {
   perfectWorkKpiLimit: number;
   historicalReworkRate: number;
   weightsSum: number;
+  totalStoryPointsTarget: number;
+  totalTasksTarget: number;
+  sprintAverageComplexityTarget: number;
+  reworkKpiUpperLimit: number;
 }
 
 function calculateKpi(stat: AssigneeStat, config: KpiConfig): number {
-  const { weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, perfectWorkKpiLimit, historicalReworkRate, weightsSum } = config;
+  const {
+    weightStoryPoints,
+    weightTasks,
+    weightComplexity,
+    weightRework,
+    weightDelays,
+    historicalReworkRate,
+    weightsSum,
+    totalStoryPointsTarget,
+    totalTasksTarget,
+    sprintAverageComplexityTarget,
+    reworkKpiUpperLimit,
+  } = config;
+
   const storyPoints = stat.totalStoryPoints;
   const tasksCount = stat.totalTasks;
   const avgComplexity = stat.averageComplexity;
   const qaRework = stat.qaRework;
   const delays = stat.delaysMinutes;
-  const storyPointsPct = perfectWorkKpiLimit > 0 ? Math.min(storyPoints / perfectWorkKpiLimit, 1) : 0;
-  const tasksPct = perfectWorkKpiLimit > 0 ? Math.min(tasksCount / perfectWorkKpiLimit, 1) : 0;
-  const complexityPct = avgComplexity > 0 ? Math.min(1 / avgComplexity, 1) : 0;
-  const reworkPct = historicalReworkRate > 0 ? Math.max(1 - (qaRework / historicalReworkRate), 0) : 1;
+
+  const storyPointsPct = totalStoryPointsTarget > 0 ? (storyPoints / totalStoryPointsTarget) : 0;
+  const tasksPct = totalTasksTarget > 0 ? (tasksCount / totalTasksTarget) : 0;
+  const complexityPct = sprintAverageComplexityTarget > 0 ? (avgComplexity / sprintAverageComplexityTarget) : 0;
+  const reworkPct = historicalReworkRate > 0 && tasksCount > 0 ? (reworkKpiUpperLimit - ((qaRework / tasksCount) / historicalReworkRate)) : 1;
   const delaysPct = delays > 0 ? Math.max(1 - (delays / 60), 0) : 1;
+
   const kpiRaw =
     storyPointsPct * weightStoryPoints +
     tasksPct * weightTasks +
     complexityPct * weightComplexity +
     reworkPct * weightRework +
     delaysPct * weightDelays;
+
   const kpi = weightsSum > 0 ? Math.round((kpiRaw / weightsSum) * 100) : 0;
   return kpi;
 }

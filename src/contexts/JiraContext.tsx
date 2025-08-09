@@ -89,6 +89,11 @@ interface JiraContextType {
   setWeightDelays: (value: number) => void;
   weightsSum: number;
   weightsAreValid: boolean;
+  reworkKpiUpperLimit: number;
+  setReworkKpiUpperLimit: (value: number) => void;
+  totalStoryPointsTarget: number;
+  totalTasksTarget: number;
+  sprintAverageComplexityTarget: number;
 }
 
 // Nueva estructura para stats por sprint y desarrollador
@@ -149,6 +154,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const [weightComplexity, setWeightComplexity] = useState<number>(() => getKpiNumber('kpi_weightComplexity', 1));
   const [weightRework, setWeightRework] = useState<number>(() => getKpiNumber('kpi_weightRework', 1));
   const [weightDelays, setWeightDelays] = useState<number>(() => getKpiNumber('kpi_weightDelays', 1));
+  const [reworkKpiUpperLimit, setReworkKpiUpperLimit] = useState<number>(() => getKpiNumber('kpi_reworkKpiUpperLimit', 1));
 
   // Estado para stats por sprint y desarrollador
   const [assigneeStatsBySprint, setAssigneeStatsBySprint] = useState<AssigneeSprintStats>(() => {
@@ -214,6 +220,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => { localStorage.setItem('kpi_weightComplexity', String(weightComplexity)); }, [weightComplexity]);
   useEffect(() => { localStorage.setItem('kpi_weightRework', String(weightRework)); }, [weightRework]);
   useEffect(() => { localStorage.setItem('kpi_weightDelays', String(weightDelays)); }, [weightDelays]);
+  useEffect(() => { localStorage.setItem('kpi_reworkKpiUpperLimit', String(reworkKpiUpperLimit)); }, [reworkKpiUpperLimit]);
 
   // Memoize normalized tasks to re-process only when rawTasks or mapping options change
   const normalizedTasks = useMemo(() => {
@@ -431,6 +438,19 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [filteredTasks, assigneeStatsBySprint, sprintInfo]);
 
+  // Calculate total story points and total tasks for the current sprint
+  const totalStoryPointsTarget = useMemo(() => {
+    return filteredTasks.reduce((acc, task) => acc + (typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0), 0);
+  }, [filteredTasks]);
+
+  const totalTasksTarget = useMemo(() => {
+    return filteredTasks.length;
+  }, [filteredTasks]);
+
+  const sprintAverageComplexityTarget = useMemo(() => {
+    return totalTasksTarget > 0 ? totalStoryPointsTarget / totalTasksTarget : 0;
+  }, [totalStoryPointsTarget, totalTasksTarget]);
+
   // Validación: suma de ponderaciones debe ser exactamente 100
   const weightsSum = useMemo(() => {
     return weightStoryPoints + weightTasks + weightComplexity + weightRework + weightDelays;
@@ -480,6 +500,11 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     setWeightDelays,
     weightsSum, // suma total de ponderaciones
     weightsAreValid, // booleano de validez
+    reworkKpiUpperLimit,
+    setReworkKpiUpperLimit,
+    totalStoryPointsTarget,
+    totalTasksTarget,
+    sprintAverageComplexityTarget,
   }), [
     projects,
     sprints,
@@ -518,6 +543,11 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     setWeightDelays,
     weightsSum,
     weightsAreValid,
+    reworkKpiUpperLimit,
+    setReworkKpiUpperLimit,
+    totalStoryPointsTarget,
+    totalTasksTarget,
+    sprintAverageComplexityTarget,
   ]);
 
   return <JiraContext.Provider value={value}>{children}</JiraContext.Provider>;
