@@ -86,6 +86,10 @@ const transformIssueData = (issue: JiraIssue): TransformedIssue => {
   // The complexity field from Jira (customfield_10127) might be an array.
   // We need to handle this case and extract the numeric value, defaulting to 0.
   const rawComplexity = issue.fields.customfield_10127;
+
+  // ADD THIS LOG
+  context.log(`Raw Complexity for ${issue.key}:`, rawComplexity);
+
   const complexity = Array.isArray(rawComplexity) && rawComplexity.length > 0
     ? Number(rawComplexity[0].value) || 0
     : Number(rawComplexity) || 0;
