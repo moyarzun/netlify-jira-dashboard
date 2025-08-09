@@ -114,6 +114,7 @@ const transformIssueData = (issue: JiraIssue): TransformedIssue => {
 
 // Main Edge Function handler
 export default async (request: Request, context: Context) => {
+  context.log(`[jira-proxy] Received request for: ${request.method} ${request.url}`);
   // Handle CORS pre-flight requests
   if (request.method === "OPTIONS") {
     return new Response(null, {

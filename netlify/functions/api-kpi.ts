@@ -42,6 +42,7 @@ function calculateKpi(stat: AssigneeStat, config: KpiConfig): number {
 }
 
 export const handler: Handler = async (event) => {
+  console.log('[api-kpi] Function invoked. Received event:', JSON.stringify(event, null, 2));
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
