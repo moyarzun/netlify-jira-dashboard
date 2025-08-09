@@ -39,7 +39,6 @@ interface TransformedIssue {
     avatarUrl: string;
   };
   storyPoints: number;
-  complexity: number;
   changelog: unknown; // Use unknown for better type safety than any
   closedSprints: JiraSprint[]; // Use a specific type for closed sprints
 }
@@ -83,13 +82,6 @@ const getJiraConfig = async (): Promise<JiraConfig | null> => {
 
 // Helper function to transform Jira issue data
 const transformIssueData = (issue: JiraIssue): TransformedIssue => {
-  // The complexity field from Jira (customfield_10127) might be an array.
-  // We need to handle this case and extract the numeric value, defaulting to 0.
-  const rawComplexity = issue.fields.customfield_10127;
-  const complexity = Array.isArray(rawComplexity) && rawComplexity.length > 0
-    ? Number(rawComplexity[0].value) || 0
-    : Number(rawComplexity) || 0;
-
   return {
     id: issue.key,
     title: issue.fields.summary || "No Title",
@@ -106,7 +98,6 @@ const transformIssueData = (issue: JiraIssue): TransformedIssue => {
           avatarUrl: "",
         },
     storyPoints: issue.fields.customfield_10331 || 0,
-    complexity: complexity,
     changelog: issue.changelog,
     closedSprints: issue.fields.closedSprints || [],
   };
@@ -287,11 +278,6 @@ export default async (request: Request, context: Context) => {
           keepFetching = false;
         }
       }
-
-      // ADD THIS LOGGING LOOP
-      allIssues.forEach(issue => {
-        context.log(`Raw Complexity for ${issue.key}:`, issue.fields.customfield_10127);
-      });
 
       const transformedIssues = allIssues.map(transformIssueData);
 
