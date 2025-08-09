@@ -23,6 +23,11 @@ excludedPattern = "^/netlify/blobs/|^/api/kpi"
 
 
 
+[[redirects]]
+  from = "/api/kpi"
+  to = "/.netlify/functions/api-kpi"
+  status = 200
+
 # Trigger new deploy to clear cache
 [[redirects]]
   from = "/*"
