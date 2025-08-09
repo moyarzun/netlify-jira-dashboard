@@ -19,7 +19,7 @@
 [[edge_functions]]
 path = "/api/*"
 function = "jira-proxy"
-excludedPattern = "^/netlify/blobs/"
+excludedPattern = "^/netlify/blobs/|^/api/kpi"
 
 
 
