@@ -94,6 +94,7 @@ interface JiraContextType {
   totalStoryPointsTarget: number;
   totalTasksTarget: number;
   sprintAverageComplexityTarget: number;
+  selectedProjectKey: string | null; // Add this
 }
 
 // Nueva estructura para stats por sprint y desarrollador
@@ -136,6 +137,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [sprintInfo, setSprintInfo] = useState<JiraSprint | null>(null);
+  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
 
   // Initialize state from localStorage or use default
   const [excludeCarryover, setExcludeCarryover] = useState<boolean>(
@@ -289,6 +291,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       }
       const data = await response.json();
       setSprints(data.sprints || []);
+      setSelectedProjectKey(projectKey); // Set the selected project key here
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
       else setError("An unknown error occurred while fetching sprints.");
@@ -345,6 +348,13 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
         : [];
 
       setRawTasks(issues);
+
+      // After successfully fetching tasks, re-fetch sprints for the current project
+      // Ensure selectedProjectKey is not null before calling fetchSprints
+      if (selectedProjectKey) {
+        await fetchSprints(selectedProjectKey);
+      }
+
     } catch (err: unknown) {
       console.error("Error fetching tasks:", err); // Added for better debugging
       if (err instanceof Error) setError(err.message);
@@ -353,7 +363,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [sprints]);
+  }, [sprints, selectedProjectKey, fetchSprints]);
 
   const forceUpdate = useCallback(async (sprintId: number) => {
     setLoading(true);
@@ -548,6 +558,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     totalStoryPointsTarget,
     totalTasksTarget,
     sprintAverageComplexityTarget,
+    selectedProjectKey,
   ]);
 
   return <JiraContext.Provider value={value}>{children}</JiraContext.Provider>;
