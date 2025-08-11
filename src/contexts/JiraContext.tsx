@@ -133,6 +133,13 @@ const getKpiNumber = (key: string, fallback: number) => {
 };
 
 export const JiraProvider = ({ children }: { children: ReactNode }) => {
+  // Estado para mensajes de log de carga
+  const [logMessages, setLogMessages] = useState<string[]>([]);
+
+  // Función para agregar un mensaje al log
+  const addLogMessage = useCallback((message: string) => {
+    setLogMessages(prev => [...prev, message]);
+  }, []);
   const [projects, setProjects] = useState<JiraProject[]>([]);
   const [sprints, setSprints] = useState<JiraSprint[]>([]);
   const [rawTasks, setRawTasks] = useState<ApiTask[]>([]);
@@ -531,8 +538,9 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     totalStoryPointsTarget,
     totalTasksTarget,
     sprintAverageComplexityTarget,
-    logMessages,
-    addLogMessage,
+        selectedProjectKey,
+        logMessages,
+        addLogMessage,
   }), [
     projects,
     sprints,
