@@ -240,9 +240,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   }, [rawTasks, treatReviewDoneAsDone]);
 
   const filteredTasks = useMemo(() => {
-    if (!excludeCarryover) {
-      return normalizedTasks;
-    }
+    
     const selectedSprintId = sprintInfo?.id?.toString();
     const closedSprintIds = sprints.filter(s => s.state === "closed").map(s => s.id.toString());
     return normalizedTasks.filter(task => {
