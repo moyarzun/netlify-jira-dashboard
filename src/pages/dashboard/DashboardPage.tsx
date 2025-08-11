@@ -237,6 +237,8 @@ export const DashboardPage = () => {
       </div>
 
       {/* Debug section eliminado por no usarse */}
+
+      <LoadingLogModal isOpen={loading && logMessages.length > 0} messages={logMessages} />
     </div>
   );
 }
