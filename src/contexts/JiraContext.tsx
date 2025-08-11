@@ -38,7 +38,7 @@ interface ApiTask {
   status: string;
   label: string;
   priority: string;
-  assignee: { name: string; avatarUrl: string; };
+  assignee: { accountId: string; name: string; avatarUrl: string; };
   storyPoints: number;
   complexity: number;
   closedSprints?: JiraSprint[]; // Use specific type
@@ -56,7 +56,7 @@ interface JiraContextType {
   assigneeStatsBySprint: AssigneeSprintStats; // Nuevo: stats por sprint y dev
   setAssigneeSprintStat: (
     sprintId: string,
-    assigneeName: string,
+    assigneeId: string,
     field: 'qaRework' | 'delaysMinutes',
     value: number
   ) => void; // Nuevo setter para edición
@@ -97,12 +97,17 @@ interface JiraContextType {
   selectedProjectKey: string | null; // Add this
   logMessages: string[];
   addLogMessage: (message: string) => void;
+  users: Record<string, { name: string; avatarUrl: string; }>;
+  activeUsers: Record<string, boolean>;
+  toggleUserActivation: (userId: string) => void;
+  userTypes: Record<string, string>;
+  setUserType: (userId: string, userType: string) => void;
 }
 
 // Nueva estructura para stats por sprint y desarrollador
 interface AssigneeSprintStats {
   [sprintId: string]: {
-    [assigneeName: string]: {
+    [assigneeId: string]: {
       qaRework: number;
       delaysMinutes: number;
     };
@@ -169,6 +174,66 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const [weightDelays, setWeightDelays] = useState<number>(() => getKpiNumber('kpi_weightDelays', 1));
   const [reworkKpiUpperLimit, setReworkKpiUpperLimit] = useState<number>(() => getKpiNumber('kpi_reworkKpiUpperLimit', 1));
 
+  const [users, setUsers] = useState<Record<string, { name: string; avatarUrl: string; }>>(() => {
+    if (typeof window === 'undefined') return {};
+    const stored = window.localStorage.getItem('users');
+    return stored ? JSON.parse(stored) : {};
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const newUsers = { ...users };
+      rawTasks.forEach(task => {
+        if (task.assignee && task.assignee.accountId && !newUsers[task.assignee.accountId]) {
+          newUsers[task.assignee.accountId] = {
+            name: task.assignee.name,
+            avatarUrl: task.assignee.avatarUrl,
+          };
+        }
+      });
+      setUsers(newUsers);
+      window.localStorage.setItem('users', JSON.stringify(newUsers));
+    }
+  }, [rawTasks]);
+
+  const [activeUsers, setActiveUsers] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {};
+    const stored = window.localStorage.getItem('activeUsers');
+    return stored ? JSON.parse(stored) : {};
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('activeUsers', JSON.stringify(activeUsers));
+    }
+  }, [activeUsers]);
+
+  const toggleUserActivation = (userId: string) => {
+    setActiveUsers(prev => ({
+      ...prev,
+      [userId]: !prev[userId],
+    }));
+  };
+
+  const [userTypes, setUserTypes] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    const stored = window.localStorage.getItem('userTypes');
+    return stored ? JSON.parse(stored) : {};
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('userTypes', JSON.stringify(userTypes));
+    }
+  }, [userTypes]);
+
+  const setUserType = (userId: string, userType: string) => {
+    setUserTypes(prev => ({
+      ...prev,
+      [userId]: userType,
+    }));
+  };
+
   // Estado para stats por sprint y desarrollador
   const [assigneeStatsBySprint, setAssigneeStatsBySprint] = useState<AssigneeSprintStats>(() => {
     if (typeof window === 'undefined') return {};
@@ -190,15 +255,15 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   }, [assigneeStatsBySprint]);
 
   // Setter para actualizar stats de un desarrollador en un sprint
-  const setAssigneeSprintStat = useCallback((sprintId: string, assigneeName: string, field: 'qaRework' | 'delaysMinutes', value: number) => {
+  const setAssigneeSprintStat = useCallback((sprintId: string, assigneeId: string, field: 'qaRework' | 'delaysMinutes', value: number) => {
     setAssigneeStatsBySprint(prev => {
       const prevSprint = prev[sprintId] || {};
-      const prevAssignee = prevSprint[assigneeName] || { qaRework: 0, delaysMinutes: 0 };
+      const prevAssignee = prevSprint[assigneeId] || { qaRework: 0, delaysMinutes: 0 };
       return {
         ...prev,
         [sprintId]: {
           ...prevSprint,
-          [assigneeName]: {
+          [assigneeId]: {
             ...prevAssignee,
             [field]: value,
           },
@@ -439,23 +504,29 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     return [...new Set(statuses)];
   }, [filteredTasks]);
 
+  
+
   const assigneeStats = useMemo(() => {
     const stats: { [key: string]: { totalTasks: number; totalStoryPoints: number } } = {};
 
     filteredTasks.forEach(task => {
-      const assigneeName = task.assignee?.name || "Unassigned";
-      if (!stats[assigneeName]) {
-        stats[assigneeName] = { totalTasks: 0, totalStoryPoints: 0 };
+      const assignee = task.assignee;
+      if (!assignee || activeUsers[assignee.accountId] === false) {
+        return; // Skip inactive users or tasks without assignee
       }
-      stats[assigneeName].totalTasks += 1;
-      stats[assigneeName].totalStoryPoints += typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0;
+
+      if (!stats[assignee.accountId]) {
+        stats[assignee.accountId] = { totalTasks: 0, totalStoryPoints: 0 };
+      }
+      stats[assignee.accountId].totalTasks += 1;
+      stats[assignee.accountId].totalStoryPoints += typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0;
     });
 
     const sprintId = sprintInfo?.id?.toString() || '';
-    return Object.entries(stats).map(([name, data]) => {
-      const sprintStats = assigneeStatsBySprint[sprintId]?.[name] || { qaRework: 0, delaysMinutes: 0 };
+    return Object.entries(stats).map(([accountId, data]) => {
+      const sprintStats = assigneeStatsBySprint[sprintId]?.[accountId] || { qaRework: 0, delaysMinutes: 0 };
       return {
-        name,
+        name: users[accountId]?.name || "Unassigned",
         totalTasks: data.totalTasks,
         totalStoryPoints: data.totalStoryPoints,
         averageComplexity: data.totalTasks > 0 ? data.totalStoryPoints / data.totalTasks : 0,
@@ -463,7 +534,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
         delaysMinutes: sprintStats.delaysMinutes,
       };
     });
-  }, [filteredTasks, assigneeStatsBySprint, sprintInfo]);
+  }, [filteredTasks, assigneeStatsBySprint, sprintInfo, activeUsers, users]);
 
   // Calculate total story points and total tasks for the current sprint
   const totalStoryPointsTarget = useMemo(() => {
@@ -536,6 +607,11 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
         selectedProjectKey,
         logMessages,
         addLogMessage,
+        users,
+        activeUsers,
+        toggleUserActivation,
+        userTypes,
+        setUserType,
   }), [
     projects,
     sprints,
@@ -582,6 +658,11 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     selectedProjectKey,
     logMessages,
     addLogMessage,
+    users,
+    activeUsers,
+    toggleUserActivation,
+    userTypes,
+    setUserType,
   ]);
 
   return <JiraContext.Provider value={value}>{children}</JiraContext.Provider>;

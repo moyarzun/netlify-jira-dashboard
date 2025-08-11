@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import JiraSettingsPopover from "./JiraSettingsPopover";
 import SprintSelector from "./SprintSelector";
 import { ViewOptions } from "@/components/view-options";
+import { UserActivationManager } from "@/components/UserActivationManager";
 
 const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
   return (
@@ -20,6 +21,7 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
       </div>
       <div className="flex items-center space-x-2">
         <ViewOptions />
+        <UserActivationManager />
         <JiraSettingsPopover />
       </div>
     </header>
