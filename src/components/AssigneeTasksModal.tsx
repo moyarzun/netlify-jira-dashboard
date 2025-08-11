@@ -14,15 +14,20 @@ interface AssigneeTasksModalProps {
   tasks: Task[];
   children: React.ReactNode;
   onUpdateStats?: (assigneeName: string, qaRework: number, delaysMinutes: number) => void;
+  sprints?: { id: string; sequence: number }[];
+  selectedSprintId?: string;
 }
+import { isCarryover } from "@/helpers/is-carryover";
 
 const getAssigneeStatsKey = (assigneeName: string) => `assigneeStats_${assigneeName}`;
 
-export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStats }: AssigneeTasksModalProps) {
+export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStats, sprints, selectedSprintId }: AssigneeTasksModalProps) {
   // Estado local para edición
   const [editMode, setEditMode] = useState(false);
   const [qaRework, setQaRework] = useState(0);
   const [delaysMinutes, setDelaysMinutes] = useState(0);
+  // Tipar userTypes correctamente
+  const { userTypes } = useJira() as { userTypes: Record<string, string> };
 
   // Cargar valores desde localStorage al abrir
   useEffect(() => {
@@ -128,6 +133,7 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                   <TableHead>Prioridad</TableHead>
                   <TableHead className="text-right">Puntos de Historia</TableHead>
                   <TableHead>Tipo de Usuario</TableHead>
+                  <TableHead>Última Actualización</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -135,10 +141,12 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                   const issueType = labels.find((l) => l.value === task.label);
                   const status = statuses.find((s) => s.value === task.status);
                   const priority = priorities.find((p) => p.value === task.priority);
-                  const { userTypes } = useJira();
-                  const assigneeAccountId = task.assignee?.accountId;
-                  const userType = assigneeAccountId ? userTypes[assigneeAccountId] || "Sin asignación" : "Sin asignación";
-                  // Badge color según tipo
+                  const assigneeName = task.assignee?.name;
+                  const userType = assigneeName ? userTypes[assigneeName] || "Sin asignación" : "Sin asignación";
+                  // Estado Nueva/Carryover usando props
+                  const isCarry = sprints && selectedSprintId
+                    ? isCarryover({ task, selectedSprintId, sprints })
+                    : false;
                   let badgeColor = "bg-gray-400 text-white";
                   if (userType === "Desarrollador") badgeColor = "bg-blue-600 text-white";
                   else if (userType === "QA") badgeColor = "bg-green-600 text-white";
@@ -183,6 +191,16 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                       <TableCell className="text-right">{task.storyPoints || 0}</TableCell>
                       <TableCell>
                         <span
+                          className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${isCarry ? "bg-red-600 text-white" : "bg-green-600 text-white"}`}
+                          tabIndex={0}
+                          aria-label={isCarry ? "Carryover" : "Nueva"}
+                          role="status"
+                        >
+                          {isCarry ? "Carryover" : "Nueva"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span
                           className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${badgeColor}`}
                           tabIndex={0}
                           aria-label={`Tipo de usuario: ${userType}`}
@@ -191,6 +209,15 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                           {userType}
                         </span>
                       </TableCell>
+                      <TableCell>
+                        {/* Fecha de última actualización: solo sincronización local */}
+                        {(() => {
+                          const sync = localStorage.getItem(`lastSync_${task.id}`);
+                          return sync
+                          ? new Date(sync).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
+                          : 'Sin registro';
+                      })()}
+                    </TableCell>
                     </TableRow>
                   );
                 })}

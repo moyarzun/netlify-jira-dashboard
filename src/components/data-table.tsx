@@ -1,4 +1,4 @@
-import * as React from "react"
+import * as React from "react";
 import {
   type ColumnDef,
   type ColumnFiltersState,
@@ -12,10 +12,9 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
-} from "@tanstack/react-table"
-
-import { DataTablePagination } from "@/components/data-table-pagination"
-import { DataTableToolbar } from "@/components/data-table-toolbar"
+} from "@tanstack/react-table";
+import { DataTablePagination } from "@/components/data-table-pagination";
+import { DataTableToolbar } from "@/components/data-table-toolbar";
 import {
   Table,
   TableBody,
@@ -23,15 +22,17 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
+import type { TableMeta } from "@/components/columns";
 
-interface DataTableProps<TData, TValue> {
+export interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   isLoading?: boolean;
   columnVisibility: VisibilityState;
   setColumnVisibility: React.Dispatch<React.SetStateAction<VisibilityState>>;
-  statuses: { label: string; value: string; icon?: React.ComponentType<{ className?: string }> }[];
+  // ...otros props...
+  meta?: TableMeta;
 }
 
 export function DataTable<TData, TValue>({
@@ -40,13 +41,16 @@ export function DataTable<TData, TValue>({
   isLoading,
   columnVisibility,
   setColumnVisibility,
-  statuses,
+  meta,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({})
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    []
-  )
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [sorting, setSorting] = React.useState<SortingState>([])
+
+  // Desactiva todos los filtros al montar el componente
+  React.useEffect(() => {
+    setColumnFilters([]);
+  }, []);
 
   const table = useReactTable({
     data,
@@ -68,11 +72,12 @@ export function DataTable<TData, TValue>({
     getSortedRowModel: getSortedRowModel(),
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
+    meta,
   })
 
   return (
     <div className="space-y-4">
-      <DataTableToolbar table={table} statuses={statuses} />
+      <DataTableToolbar table={table} />
       <div className="relative w-full overflow-auto">
         <div className="rounded-md border">
         <Table>

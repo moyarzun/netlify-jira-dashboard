@@ -3,23 +3,20 @@ import { useJira } from "@/hooks/useJira";
 import { StatCard } from "@/components/StatCard";
 import { CheckCircle, ListTodo, Star } from "lucide-react";
 import type { Task } from "@/data/schema";
-// import { Badge } from "@/components/ui/badge";
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-// import { ForceJiraUpdateButton } from "@/components/ForceJiraUpdateButton";
 import { AssigneeTasksModal } from "@/components/AssigneeTasksModal";
-import { DashboardOptionsModal } from "@/components/DashboardOptionsModal";
 import { LoadingLogModal } from "@/components/LoadingLogModal";
-
+import { isCarryover } from "@/helpers/is-carryover";
 
 interface AssigneeStat {
   name: string;
   totalTasks: number;
   totalStoryPoints: number;
   averageComplexity: number;
-  qaRework: number; // Retrabajos de QA
-  delaysMinutes: number; // Atrasos (Minutos)
+  qaRework: number;
+  delaysMinutes: number;
 }
 
 export const DashboardPage = () => {
@@ -43,35 +40,49 @@ export const DashboardPage = () => {
     totalTasksTarget,
     sprintAverageComplexityTarget,
     logMessages,
-  } = useJira();
+    sprints,
+  } = useJira() as {
+    tasks: Task[];
+    sprintInfo: { id?: string | number; name?: string } | null;
+    loading: boolean;
+    assigneeStats: AssigneeStat[];
+    weightStoryPoints: number;
+    weightTasks: number;
+    weightComplexity: number;
+    weightRework: number;
+    weightDelays: number;
+    perfectWorkKpiLimit: number;
+    historicalReworkRate: number;
+    weightsSum: number;
+    excludeCarryover: boolean;
+    treatReviewDoneAsDone: boolean;
+    reworkKpiUpperLimit: number;
+    totalStoryPointsTarget: number;
+    totalTasksTarget: number;
+    sprintAverageComplexityTarget: number;
+    logMessages: string[];
+    sprints: { id: string | number }[];
+  };
 
   const [kpis, setKpis] = useState<Record<string, number>>({});
   const [assigneeStatsCache, setAssigneeStatsCache] = useState<Record<string, { qaRework: number; delaysMinutes: number }>>({});
 
-
   useEffect(() => {
-    // Cargar valores de QA y Atrasos desde localStorage para todos los asignados
     const cache: Record<string, { qaRework: number; delaysMinutes: number }> = {};
     assigneeStats.forEach(stat => {
       const key = `assigneeStats_${stat.name}`;
       const cached = localStorage.getItem(key);
       if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          cache[stat.name] = {
-            qaRework: Number(parsed.qaRework) || 0,
-            delaysMinutes: Number(parsed.delaysMinutes) || 0,
-          };
-        } catch {
-          cache[stat.name] = { qaRework: 0, delaysMinutes: 0 };
-        }
+        const parsed = JSON.parse(cached!);
+        cache[stat.name] = {
+          qaRework: Number(parsed.qaRework) || 0,
+          delaysMinutes: Number(parsed.delaysMinutes) || 0,
+        };
       } else {
         cache[stat.name] = { qaRework: 0, delaysMinutes: 0 };
       }
     });
     setAssigneeStatsCache(cache);
-
-    // Leer KPIs desde localStorage por sprint
     const sprintId = sprintInfo?.id ? String(sprintInfo.id) : 'unknown';
     const kpiCacheKey = `kpis_by_sprint_${sprintId}_carryover_${excludeCarryover}_reviewdone_${treatReviewDoneAsDone}`;
     const kpiCacheRaw = localStorage.getItem(kpiCacheKey);
@@ -79,14 +90,11 @@ export const DashboardPage = () => {
     if (kpiCacheRaw) {
       try {
         kpiCache = JSON.parse(kpiCacheRaw);
-        // Log lectura de cache
-        console.log('[KPI] Leyendo KPIs desde localStorage', { sprintId, kpiCache });
         setKpis(kpiCache);
       } catch {
         setKpis({});
       }
     } else {
-      // Si no hay cache, calcular KPIs desde backend
       const fetchKpis = async () => {
         try {
           const config = {
@@ -107,10 +115,10 @@ export const DashboardPage = () => {
             assigneeStats: assigneeStats.map(stat => ({
               ...stat,
               qaRework: cache[stat.name]?.qaRework ?? stat.qaRework,
-              delaysMinutes: cache[stat.name]?.delaysMinutes ?? stat.delaysMinutes,
             })),
             config,
           });
+          const kpiCacheKeyLocal = `kpis_by_sprint_${sprintId}_carryover_${excludeCarryover}_reviewdone_${treatReviewDoneAsDone}`;
           const kpiMap: Record<string, number> = {};
           const kpiCache: Record<string, number> = {};
           response.data.kpis.forEach((k: { name: string; kpi: number }) => {
@@ -118,11 +126,8 @@ export const DashboardPage = () => {
             kpiCache[k.name] = k.kpi;
           });
           setKpis(kpiMap);
-          // Guardar en localStorage
-          console.log('[KPI] Guardando KPIs en localStorage', { sprintId, kpiCache });
-          localStorage.setItem(kpiCacheKey, JSON.stringify(kpiCache));
-        } catch (e) {
-          console.error('[KPI] Error calculando KPIs', e);
+          localStorage.setItem(kpiCacheKeyLocal, JSON.stringify(kpiCache));
+        } catch {
           setKpis({});
         }
       };
@@ -132,7 +137,6 @@ export const DashboardPage = () => {
     }
   }, [assigneeStats, sprintInfo?.id, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, perfectWorkKpiLimit, historicalReworkRate, weightsSum, reworkKpiUpperLimit, totalStoryPointsTarget, totalTasksTarget, sprintAverageComplexityTarget, excludeCarryover, treatReviewDoneAsDone]);
 
-  // Función para actualizar el cache y localStorage desde el modal
   const handleUpdateAssigneeStats = useCallback((assigneeName: string, qaRework: number, delaysMinutes: number) => {
     setAssigneeStatsCache(prev => ({
       ...prev,
@@ -141,19 +145,34 @@ export const DashboardPage = () => {
     localStorage.setItem(`assigneeStats_${assigneeName}`, JSON.stringify({ qaRework, delaysMinutes }));
   }, []);
 
+  const validatedTasks = tasks.map((task: Task) => ({ ...task, sprintHistory: task.sprintHistory ?? [] }));
+  const totalTasks = tasks.length;
+  const totalStoryPoints = tasks.reduce((acc: number, task: Task) => acc + (task.storyPoints || 0), 0);
+  const selectedSprintId = sprintInfo?.id ? sprintInfo.id.toString() : '';
+
+  useEffect(() => {
+    console.log('tasks:', tasks);
+    console.log('validatedTasks:', validatedTasks);
+    console.log('selectedSprintId:', selectedSprintId);
+  }, [tasks, validatedTasks, selectedSprintId]);
+  const sprintList = Array.isArray(sprints)
+    ? sprints.map((s, idx) => ({ id: s.id.toString(), sequence: idx }))
+    : [];
+  const carryoverTasks = tasks.filter((task: Task) =>
+    isCarryover({ task, selectedSprintId, sprints: sprintList })
+  );
+  const newTasks = tasks.filter((task: Task) =>
+    !isCarryover({ task, selectedSprintId, sprints: sprintList })
+  );
+  const newTasksCount = newTasks.length;
+  const carryoverTasksCount = carryoverTasks.length;
+  const newStoryPoints = newTasks.reduce((acc: number, task: Task) => acc + (task.storyPoints || 0), 0);
+  const carryoverStoryPoints = carryoverTasks.reduce((acc: number, task: Task) => acc + (task.storyPoints || 0), 0);
+  const tasksDone = tasks.filter((task: Task) => task.status === "done").length;
+
   if (loading) {
     return <div>Cargando dashboard...</div>;
   }
-
-  const totalTasks = tasks.length;
-  const totalStoryPoints = tasks.reduce((acc: number, task: Task) => acc + (task.storyPoints || 0), 0);
-
-  const tasksDone = tasks.filter((task: Task) => task.status === "done").length;
-  // const completedStoryPoints = tasks
-  //   .filter((task: Task) => task.status === "done")
-  //   .reduce((acc: number, task: Task) => acc + (task.storyPoints || 0), 0);
-
-  // const progressPercentage = totalStoryPoints > 0 ? (completedStoryPoints / totalStoryPoints) * 100 : 0;
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -161,32 +180,37 @@ export const DashboardPage = () => {
         <h2 className="text-3xl font-bold tracking-tight">
           Dashboard: {sprintInfo?.name || "Ningún Sprint Seleccionado"}
         </h2>
-        <div className="flex items-center space-x-2">
-          <DashboardOptionsModal />
-        </div>
+        <div className="flex items-center space-x-2"></div>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Tareas Totales en Sprint"
           value={totalTasks.toString()}
           icon={<ListTodo className="h-4 w-4 text-muted-foreground" />}
-        />
+        >
+          <span>Nuevas: <span className="font-semibold text-foreground">{newTasksCount}</span></span>
+          <span>Carryover: <span className="font-semibold text-foreground">{carryoverTasksCount}</span></span>
+        </StatCard>
         <StatCard
           title="Puntos de Historia Totales"
           value={totalStoryPoints.toString()}
           icon={<Star className="h-4 w-4 text-muted-foreground" />}
-        />
+        >
+          <span>Nuevos: <span className="font-semibold text-foreground">{newStoryPoints}</span></span>
+          <span>Carryover: <span className="font-semibold text-foreground">{carryoverStoryPoints}</span></span>
+        </StatCard>
         <StatCard
           title="Tareas Completadas"
           value={`${tasksDone} of ${totalTasks}`}
           icon={<CheckCircle className="h-4 w-4 text-muted-foreground" />}
         />
       </div>
-
+      {/* Tabla de tareas eliminada por requerimiento */}
+      <LoadingLogModal isOpen={loading && logMessages.length > 0} messages={logMessages} />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {assigneeStats && assigneeStats.map((stat: AssigneeStat) => {
           const assigneeTasks = tasks.filter(
-            (task) => (task.assignee?.name || "Unassigned") === stat.name
+            (task: Task) => (task.assignee?.name || "Unassigned") === stat.name
           );
           return (
             <Card key={stat.name}>
@@ -219,6 +243,8 @@ export const DashboardPage = () => {
                     assigneeName={stat.name}
                     tasks={assigneeTasks}
                     onUpdateStats={handleUpdateAssigneeStats}
+                    sprints={sprintList}
+                    selectedSprintId={selectedSprintId}
                   >
                     <Button variant="outline" size="sm" className="mt-2 w-full">
                       Detalles
@@ -237,10 +263,6 @@ export const DashboardPage = () => {
           );
         })}
       </div>
-
-      {/* Debug section eliminado por no usarse */}
-
-      <LoadingLogModal isOpen={loading && logMessages.length > 0} messages={logMessages} />
     </div>
   );
-}
+};

@@ -1,21 +1,49 @@
-"use client"
 
-import type { ColumnDef } from "@tanstack/react-table"
+"use client";
+export type TableMeta = {
+  sprints?: { id: string; sequence: number }[];
+  selectedSprintId?: string;
+};
 
-// import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-
-import { DataTableColumnHeader } from "@/components/data-table-column-header"
-import { DataTableRowActions } from "@/components/data-table-row-actions"
-import { statuses, priorities } from "@/data/data"
-import type { Task } from "@/data/schema"
-import { mapJiraStatus } from "@/helpers/status-mapper"
+import type { ColumnDef } from "@tanstack/react-table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DataTableColumnHeader } from "@/components/data-table-column-header";
+import { DataTableRowActions } from "@/components/data-table-row-actions";
+import { statuses, priorities } from "@/data/data";
+import type { Task } from "@/data/schema";
+import { mapJiraStatus } from "@/helpers/status-mapper";
 import { mapJiraPriority } from "@/helpers/priority-mapper";
 import { CarryoverCell } from "@/components/CarryoverCell";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useJira } from "@/hooks/useJira";
+import { isCarryover } from "@/helpers/is-carryover";
 
 export const columns: ColumnDef<Task>[] = [
+{
+  id: "taskState",
+  header: ({ column }) => (
+	<DataTableColumnHeader column={column} title="Estado de Tarea" />
+  ),
+  cell: ({ row, table }) => {
+	const meta = table.options.meta as TableMeta | undefined;
+	const sprints = meta?.sprints ?? [];
+	const selectedSprintId = meta?.selectedSprintId;
+	const task = row.original;
+	const isCarry = isCarryover({ task, selectedSprintId, sprints });
+	const badgeClass = isCarry ? "bg-red-600 text-white" : "bg-green-600 text-white";
+	const label = isCarry ? "Carryover" : "Nueva";
+	return (
+	  <span
+		className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${badgeClass}`}
+		tabIndex={0}
+		aria-label={label}
+		role="status"
+	  >
+		{label}
+	  </span>
+	);
+  },
+  enableSorting: false,
+  enableHiding: true,
+},
 	{
 		id: "select",
 		header: ({ table }) => (
@@ -69,65 +97,56 @@ export const columns: ColumnDef<Task>[] = [
 		header: ({ column }) => (
 			<DataTableColumnHeader column={column} title="Status" />
 		),
-		cell: ({ row }) => {
-			const treatReviewDoneAsDone = false; // O la lógica que necesites
-			const mappedStatus = mapJiraStatus(row.getValue("status"), treatReviewDoneAsDone);
-
-			const status = statuses.find(
-				(status) => status.value === mappedStatus
-			)
-
-			if (!status) {
-				// Fallback to original status if no mapping is found
-				return (
-					<div className="flex w-[100px] items-center">
-						<span>{row.getValue("status")}</span>
-					</div>
-				)
-			}
-
-			return (
-				<div className="flex w-[100px] items-center">
-					{status.icon && (
-						<status.icon className="mr-2 h-4 w-4 text-muted-foreground" />
-					)}
-					<span>{status.label}</span>
-				</div>
-			)
-		},
+	cell: ({ row }) => {
+	  const mappedStatus = mapJiraStatus(row.getValue("status"), false);
+	  const status = statuses.find((status) => status.value === mappedStatus);
+	  if (!status) {
+		return (
+		  <div className="flex w-[100px] items-center">
+			<span>{row.getValue("status")}</span>
+		  </div>
+		);
+	  }
+	  return (
+		<div className="flex w-[100px] items-center">
+		  {status.icon && (
+			<status.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+		  )}
+		  <span>{status.label}</span>
+		</div>
+	  );
+	},
 		filterFn: (row, id, value) => {
 			const mappedStatus = mapJiraStatus(row.getValue(id), false);
 	  return value.includes(mappedStatus);
 		},
 	},
-	{
-		accessorKey: "priority",
-		header: ({ column }) => (
-			<DataTableColumnHeader column={column} title="Priority" />
-		),
-		cell: ({ row }) => {
-			const mappedPriority = mapJiraPriority(row.getValue("priority"));
-			const priority = priorities.find(
-				(priority) => priority.value === mappedPriority
-			)
-
-			if (!priority) {
-				return null
-			}
-
-			return (
-				<div className="flex items-center">
-					{priority.icon && (
-						<priority.icon className="mr-2 h-4 w-4 text-muted-foreground" />
-					)}
-					<span>{priority.label}</span>
-				</div>
-			)
-		},
-		filterFn: (row, id, value) => {
-			return value.includes(row.getValue(id))
-		},
+{
+	accessorKey: "priority",
+	header: ({ column }) => (
+		<DataTableColumnHeader column={column} title="Priority" />
+	),
+	cell: ({ row }) => {
+		const mappedPriority = mapJiraPriority(row.getValue("priority"));
+		const priority = priorities.find(
+			(priority) => priority.value === mappedPriority
+		);
+		if (!priority) {
+			return null;
+		}
+		return (
+			<div className="flex items-center">
+				{priority.icon && (
+					<priority.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+				)}
+				<span>{priority.label}</span>
+			</div>
+		);
 	},
+	filterFn: (row, id, value) => {
+		return value.includes(row.getValue(id));
+	},
+},
 	{
 		accessorKey: "storyPoints",
 		header: ({ column }) => (
@@ -144,36 +163,51 @@ export const columns: ColumnDef<Task>[] = [
 			return value.includes(row.getValue(id))
 		},
 	},
-	{
-		accessorKey: "assignee.accountId", // Assuming this path exists in Task
-		header: ({ column }) => (
-			<DataTableColumnHeader column={column} title="Tipo de Usuario" />
-		),
-		cell: ({ row }) => {
-			const { userTypes, setUserType } = useJira();
-			const assignee = row.original.assignee;
-			const accountId = assignee?.accountId;
-			const userRole = accountId ? userTypes[accountId] || "Sin asignación" : "Sin asignación";
-			const userRoles = ["Sin asignación", "Desarrollo", "Quality Assurance", "Tech Leader", "Product Owner"];
-
-			return (
-				<Select
-					value={userRole}
-					onValueChange={(value) => accountId && setUserType(accountId, value)}
-					disabled={!accountId}
-				>
-					<SelectTrigger className="w-[180px]">
-						<SelectValue placeholder="Selecciona un rol" />
-					</SelectTrigger>
-					<SelectContent>
-						{userRoles.map(role => (
-							<SelectItem key={role} value={role}>{role}</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			);
-		},
-	},
+{
+  accessorKey: "userType",
+  header: ({ column }) => (
+	<DataTableColumnHeader column={column} title="Tipo de Usuario" />
+  ),
+  cell: ({ row }) => {
+	const userType = row.original.userType || "Sin asignación";
+	let badgeColor = "bg-gray-400 text-white";
+	if (userType === "Desarrollador") badgeColor = "bg-blue-600 text-white";
+	else if (userType === "QA") badgeColor = "bg-green-600 text-white";
+	else if (userType !== "Sin asignación" && userType !== "Sin tipo") badgeColor = "bg-yellow-500 text-white";
+	return (
+	  <span
+		className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${badgeColor}`}
+		tabIndex={0}
+		aria-label={`Tipo de usuario: ${userType}`}
+		role="status"
+	  >
+		{userType}
+	  </span>
+	);
+  },
+},
+{
+  id: "lastSync",
+  header: ({ column }) => (
+	<DataTableColumnHeader column={column} title="Última Actualización" />
+  ),
+  cell: ({ row }) => {
+	const syncKey = `lastSync_${row.original.id}`;
+	let sync: string | null = null;
+	if (typeof window !== "undefined") {
+	  sync = localStorage.getItem(syncKey);
+	}
+	return (
+	  <span className="text-xs text-muted-foreground">
+		{sync
+		  ? new Date(sync).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" })
+		  : "Sin registro"}
+	  </span>
+	);
+  },
+  enableSorting: false,
+  enableHiding: true,
+},
 	{
 		id: "carryover",
 		header: ({ column }) => (

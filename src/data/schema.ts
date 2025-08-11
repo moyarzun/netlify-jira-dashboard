@@ -17,6 +17,7 @@ export const taskSchema = z.object({
   complexity: z.number().optional(),
   closedSprints: z.array(z.any()).optional(), // To track carry-over tasks
   sprintHistory: z.array(z.string()).optional(), // Historial de sprints por changelog
+  userType: z.string().optional(), // Tipo de usuario asignado
 })
 
 export type Task = z.infer<typeof taskSchema>

@@ -1,13 +1,16 @@
 "use client";
 
-import { createContext, useState, useMemo, useCallback, type ReactNode, useEffect } from 'react';
-import type { Task } from '@/data/schema';
+import { createContext, useState, useMemo, useCallback, useEffect } from 'react';
+
+const JiraContext = createContext<Record<string, unknown>>({});
+export { JiraContext };
 import { mapJiraIssueType } from '@/helpers/issue-type-mapper';
 import { mapJiraPriority } from '@/helpers/priority-mapper';
 import { mapJiraStatus } from '@/helpers/status-mapper';
 import { getAllSprintIdsFromChangelog } from '@/helpers/sprint-history';
 import type { IssueWithChangelog } from '@/helpers/sprint-history';
 import { isCarryover } from '@/helpers/is-carryover';
+import { calculateAssigneeStats, calculateTotalStoryPointsTarget, calculateTotalTasksTarget, calculateSprintAverageComplexityTarget, calculateWeightsSum, areWeightsValid } from '@/lib/metrics';
 
 // Define interfaces
 export interface JiraProject {
@@ -22,14 +25,7 @@ export interface JiraSprint {
   state: string;
 }
 
-interface AssigneeStat {
-  name: string;
-  totalTasks: number;
-  totalStoryPoints: number;
-  averageComplexity: number;
-  qaRework: number; // Retrabajos de QA
-  delaysMinutes: number; // Atrasos (Minutos)
-}
+// ...eliminado: tipo no usado...
 
 // Raw task format from our API before normalization
 interface ApiTask {
@@ -44,104 +40,21 @@ interface ApiTask {
   closedSprints?: JiraSprint[]; // Use specific type
 }
 
-interface JiraContextType {
-  projects: JiraProject[];
-  sprints: JiraSprint[];
-  tasks: Task[];
-  loading: boolean;
-  error: string | null;
-  sprintInfo: JiraSprint | null;
-  uniqueStatuses: string[];
-  assigneeStats: AssigneeStat[];
-  assigneeStatsBySprint: AssigneeSprintStats; // Nuevo: stats por sprint y dev
-  setAssigneeSprintStat: (
-    sprintId: string,
-    assigneeId: string,
-    field: 'qaRework' | 'delaysMinutes',
-    value: number
-  ) => void; // Nuevo setter para edición
-  fetchProjects: () => Promise<void>;
-  fetchSprints: (projectKey: string) => Promise<void>;
-  fetchTasks: (sprintId: number) => Promise<void>;
-  forceUpdate: (sprintId: number) => Promise<void>;
-  clearTasks: () => void;
-  clearSprints: () => void;
-  getRawTaskById: (id: string) => ApiTask | undefined; // Add this function
-  excludeCarryover: boolean;
-  setExcludeCarryover: (value: boolean) => void;
-  treatReviewDoneAsDone: boolean;
-  setTreatReviewDoneAsDone: (value: boolean) => void;
-  sprintQuality: number;
-  setSprintQuality: (value: number) => void;
-  historicalReworkRate: number;
-  setHistoricalReworkRate: (value: number) => void;
-  perfectWorkKpiLimit: number;
-  setPerfectWorkKpiLimit: (value: number) => void;
-  weightStoryPoints: number;
-  setWeightStoryPoints: (value: number) => void;
-  weightTasks: number;
-  setWeightTasks: (value: number) => void;
-  weightComplexity: number;
-  setWeightComplexity: (value: number) => void;
-  weightRework: number;
-  setWeightRework: (value: number) => void;
-  weightDelays: number;
-  setWeightDelays: (value: number) => void;
-  weightsSum: number;
-  weightsAreValid: boolean;
-  reworkKpiUpperLimit: number;
-  setReworkKpiUpperLimit: (value: number) => void;
-  totalStoryPointsTarget: number;
-  totalTasksTarget: number;
-  sprintAverageComplexityTarget: number;
-  selectedProjectKey: string | null; // Add this
-  logMessages: string[];
-  addLogMessage: (message: string) => void;
-  users: Record<string, { name: string; avatarUrl: string; }>;
-  activeUsers: Record<string, boolean>;
-  toggleUserActivation: (userId: string) => void;
-  userTypes: Record<string, string>;
-  setUserType: (userId: string, userType: string) => void;
-}
+// ...existing code...
 
-// Nueva estructura para stats por sprint y desarrollador
-interface AssigneeSprintStats {
-  [sprintId: string]: {
-    [assigneeId: string]: {
-      qaRework: number;
-      delaysMinutes: number;
-    };
-  };
-}
+// Definir tipo para stats por sprint y desarrollador
+type AssigneeSprintStats = Record<string, Record<string, { qaRework: number; delaysMinutes: number }>>;
 
-const JiraContext = createContext<JiraContextType | undefined>(undefined);
-
-// Helper to get initial state from localStorage
-const getInitialState = <T,>(key: string, defaultValue: T): T => {
-  if (typeof window === 'undefined') {
-    return defaultValue;
-  }
-  try {
-    const storedValue = window.localStorage.getItem(key);
-    return storedValue ? JSON.parse(storedValue) : defaultValue;
-  } catch (error) {
-    console.error(`Error reading from localStorage for key "${key}":`, error);
-    return defaultValue;
-  }
-};
-
-// Helper para obtener valor numérico de localStorage con fallback
-const getKpiNumber = (key: string, fallback: number) => {
+// Utilidad local para obtener valores de KPI desde localStorage
+const getKpiNumber = (key: string, fallback: number): number => {
   if (typeof window === 'undefined') return fallback;
   const v = window.localStorage.getItem(key);
   return v !== null && !isNaN(Number(v)) ? Number(v) : fallback;
 };
 
-export const JiraProvider = ({ children }: { children: ReactNode }) => {
+export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
   // Estado para mensajes de log de carga
   const [logMessages, setLogMessages] = useState<string[]>([]);
-
-  // Función para agregar un mensaje al log
   const addLogMessage = useCallback((message: string) => {
     setLogMessages(prev => [...prev, message]);
   }, []);
@@ -152,16 +65,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const [error, setError] = useState<string | null>(null);
   const [sprintInfo, setSprintInfo] = useState<JiraSprint | null>(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
-
-  
-
-  // Initialize state from localStorage or use default
-  const [excludeCarryover, setExcludeCarryover] = useState<boolean>(
-    () => getInitialState('excludeCarryover', false)
-  );
-  const [treatReviewDoneAsDone, setTreatReviewDoneAsDone] = useState<boolean>(
-    () => getInitialState('treatReviewDoneAsDone', false)
-  );
 
   // KPI: valores y setters globales
   const [sprintQuality, setSprintQuality] = useState<number>(() => getKpiNumber('kpi_sprintQuality', 95));
@@ -182,13 +85,10 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      // Get the current users from localStorage
       const storedUsers = JSON.parse(window.localStorage.getItem('users') || '{}');
-      const updatedUsers = { ...storedUsers }; // Start with stored users
-
+      const updatedUsers = { ...storedUsers };
       rawTasks.forEach(task => {
         if (task.assignee) {
-          // Usar accountId si existe, si no usar name como identificador
           const userId = task.assignee.accountId || task.assignee.name;
           if (userId && !updatedUsers[userId]) {
             updatedUsers[userId] = {
@@ -196,6 +96,9 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
               avatarUrl: task.assignee.avatarUrl,
             };
           }
+        }
+        if (task.id) {
+          window.localStorage.setItem(`lastSync_${task.id}`, new Date().toISOString());
         }
       });
       setUsers(updatedUsers);
@@ -242,7 +145,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     }));
   }, []);
 
-  // Estado para stats por sprint y desarrollador
   const [assigneeStatsBySprint, setAssigneeStatsBySprint] = useState<AssigneeSprintStats>(() => {
     if (typeof window === 'undefined') return {};
     try {
@@ -253,7 +155,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     }
   });
 
-  // Persistir cambios en localStorage
   useEffect(() => {
     try {
       window.localStorage.setItem('assigneeStatsBySprint', JSON.stringify(assigneeStatsBySprint));
@@ -262,9 +163,8 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [assigneeStatsBySprint]);
 
-  // Setter para actualizar stats de un desarrollador en un sprint
   const setAssigneeSprintStat = useCallback((sprintId: string, assigneeId: string, field: 'qaRework' | 'delaysMinutes', value: number) => {
-    setAssigneeStatsBySprint(prev => {
+    setAssigneeStatsBySprint((prev: AssigneeSprintStats) => {
       const prevSprint = prev[sprintId] || {};
       const prevAssignee = prevSprint[assigneeId] || { qaRework: 0, delaysMinutes: 0 };
       return {
@@ -280,24 +180,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     });
   }, []);
 
-  // Persist state to localStorage whenever it changes
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('excludeCarryover', JSON.stringify(excludeCarryover));
-    } catch (error) {
-      console.error('Failed to save excludeCarryover state to localStorage:', error);
-    }
-  }, [excludeCarryover]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('treatReviewDoneAsDone', JSON.stringify(treatReviewDoneAsDone));
-    } catch (error) {
-      console.error('Failed to save treatReviewDoneAsDone state to localStorage:', error);
-    }
-  }, [treatReviewDoneAsDone]);
-
-  // Sincronizar con localStorage
   useEffect(() => { localStorage.setItem('kpi_sprintQuality', String(sprintQuality)); }, [sprintQuality]);
   useEffect(() => { localStorage.setItem('kpi_historicalReworkRate', String(historicalReworkRate)); }, [historicalReworkRate]);
   useEffect(() => { localStorage.setItem('kpi_perfectWorkKpiLimit', String(perfectWorkKpiLimit)); }, [perfectWorkKpiLimit]);
@@ -308,36 +190,31 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => { localStorage.setItem('kpi_weightDelays', String(weightDelays)); }, [weightDelays]);
   useEffect(() => { localStorage.setItem('kpi_reworkKpiUpperLimit', String(reworkKpiUpperLimit)); }, [reworkKpiUpperLimit]);
 
-  // Memoize normalized tasks to re-process only when rawTasks or mapping options change
   const normalizedTasks = useMemo(() => {
     return rawTasks.map(task => {
-      // Cast seguro para obtener sprintHistory
       const sprintHistory = getAllSprintIdsFromChangelog(task as IssueWithChangelog) || [];
-      // Obtener el identificador del usuario asignado
       const assignee = task.assignee;
       const userId = assignee?.accountId || assignee?.name;
-      // Obtener el tipo de usuario desde el contexto
       const userType = userId ? userTypes[userId] || "Sin tipo" : "Sin tipo";
       return {
         ...task,
-        status: mapJiraStatus(task.status, treatReviewDoneAsDone),
+        status: mapJiraStatus(task.status, false),
         priority: mapJiraPriority(task.priority),
         label: mapJiraIssueType(task.label),
-        sprintHistory, // array de strings, nunca undefined
+        sprintHistory,
         userType,
       };
     });
-  }, [rawTasks, treatReviewDoneAsDone, userTypes]);
+  }, [rawTasks, userTypes]);
 
   const filteredTasks = useMemo(() => {
-    
     const selectedSprintId = sprintInfo?.id?.toString();
-    const closedSprintIds = sprints.filter(s => s.state === "closed").map(s => s.id.toString());
+    const sprintsList = sprints.map((s, idx) => ({ id: s.id.toString(), sequence: idx }));
     return normalizedTasks.filter(task => {
       if (!selectedSprintId) return true;
-      return !isCarryover({ task, selectedSprintId, closedSprintIds });
+      return !isCarryover({ task, selectedSprintId, sprints: sprintsList });
     });
-  }, [normalizedTasks, excludeCarryover, sprintInfo, sprints]);
+  }, [normalizedTasks, sprintInfo, sprints]);
 
   const getRawTaskById = useCallback((id: string): ApiTask | undefined => {
     return rawTasks.find(task => task.id === id);
@@ -385,7 +262,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       }
       const data = await response.json();
       setSprints(data.sprints || []);
-      setSelectedProjectKey(projectKey); // Set the selected project key here
+      setSelectedProjectKey(projectKey);
       addLogMessage("Sprints obtenidos correctamente para el proyecto: " + projectKey);
     } catch (err: unknown) {
       addLogMessage("Error al obtener sprints: " + (err instanceof Error ? err.message : String(err)));
@@ -406,7 +283,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     try {
       const selectedSprint = sprints.find(s => s.id === sprintId);
       setSprintInfo(selectedSprint || null);
-
       const response = await fetch('/api/jira/issues', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -417,10 +293,8 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(errMessage || 'Failed to fetch tasks.');
       }
       const data = await response.json();
-      // Detectar si la respuesta viene de cache o de Jira
       if (data.fromCache === true) {
-      addLogMessage("Datos obtenidos desde caché.");
-        // Guardar el ID del sprint en localStorage como parte de los sprints en caché
+        addLogMessage("Datos obtenidos desde caché.");
         try {
           const cacheKey = 'cachedSprintIds';
           const prev: number[] = JSON.parse(localStorage.getItem(cacheKey) || '[]');
@@ -432,23 +306,16 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
           console.error('Error guardando cachedSprintIds en localStorage', e);
         }
       } else if (data.fromJira === true) {
-      addLogMessage("Datos obtenidos directamente desde Jira.");
+        addLogMessage("Datos obtenidos directamente desde Jira.");
       } else {
-      addLogMessage("Fuente de datos no especificada (puede ser caché o Jira).");
+        addLogMessage("Fuente de datos no especificada (puede ser caché o Jira).");
       }
-      
-      // The user log shows the API returns an object like { issues: { issues: [...], total: ... } }
-      // or sometimes just { issues: [...] }. We need to handle both structures.
       const issues = data.issues && Array.isArray(data.issues.issues)
         ? data.issues.issues
         : Array.isArray(data.issues)
         ? data.issues
         : [];
-
-      // LOG SOLO DATOS RELEVANTES PARA DEPURAR USUARIOS
-      // Mostrar id y assignee de cada tarea
       console.log('fetchTasks: issues (id, assignee):', (issues as ApiTask[]).map((t: ApiTask) => ({ id: t.id, assignee: t.assignee })));
-      // Extraer usuarios únicos
       const usuariosUnicos = Array.from(new Set((issues as ApiTask[]).map((t: ApiTask) => t.assignee?.accountId).filter(Boolean)));
       console.log('fetchTasks: usuarios únicos detectados:', usuariosUnicos);
       if (usuariosUnicos.length === 0) {
@@ -457,12 +324,11 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       setRawTasks(issues);
       addLogMessage("Tareas obtenidas correctamente para el sprint: " + sprintId);
       console.log("JiraContext: rawTasks:", JSON.stringify(issues, null, 2));
-
     } catch (err: unknown) {
       addLogMessage("Error al obtener tareas: " + (err instanceof Error ? err.message : String(err)));
       if (err instanceof Error) setError(err.message);
       else setError("Ocurrió un error desconocido al obtener las tareas.");
-      setRawTasks([]); // Clear raw tasks on error
+      setRawTasks([]);
     } finally {
       setLoading(false);
     }
@@ -474,48 +340,37 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     addLogMessage("Forzando actualización de tareas para el sprint: " + sprintId);
     setError(null);
     try {
-      // Tell the backend to force-refresh from Jira. The backend will
-      // update its cache (Blob) and return the fresh data in the response.
       const response = await fetch(`/api/jira/issues?force=true`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sprintId }),
       });
-
       if (!response.ok) {
         const { error: errMessage } = await response.json();
         throw new Error(errMessage || 'Failed to force update tasks.');
       }
-
       const data = await response.json();
-
-      // The user log shows the API returns an object like { issues: { issues: [...], total: ... } }
-      // or sometimes just { issues: [...] }. We need to handle both structures.
       const issues = data.issues && Array.isArray(data.issues.issues)
         ? data.issues.issues
         : Array.isArray(data.issues)
         ? data.issues
         : [];
-
       setRawTasks(issues);
       addLogMessage("Tareas actualizadas correctamente para el sprint: " + sprintId);
-
-      // Also update sprintInfo, just like in fetchTasks
       const selectedSprint = sprints.find(s => s.id === sprintId);
       setSprintInfo(selectedSprint || null);
-
     } catch (err: unknown) {
       addLogMessage("Error durante la actualización forzada: " + (err instanceof Error ? err.message : String(err)));
       if (err instanceof Error) setError(err.message);
       else setError("Ocurrió un error desconocido durante la actualización forzada.");
-      setRawTasks([]); // Clear raw tasks on error
+      setRawTasks([]);
     } finally {
       setLoading(false);
     }
   }, [sprints, addLogMessage]);
 
   const clearTasks = useCallback(() => {
-    setRawTasks([]); // Clear raw tasks
+    setRawTasks([]);
     setSprintInfo(null);
   }, []);
 
@@ -528,75 +383,35 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     return [...new Set(statuses)];
   }, [filteredTasks]);
 
-  
-
   const assigneeStats = useMemo(() => {
-    const stats: { [key: string]: { totalTasks: number; totalStoryPoints: number } } = {};
-
-    filteredTasks.forEach(task => {
-      const assignee = task.assignee;
-      if (!assignee) {
-        return; // Skip tasks without assignee
-      }
-      const userId = assignee.accountId || assignee.name;
-      if (!userId || activeUsers[userId] === false) {
-        return; // Skip inactive users or tasks without identificador
-      }
-      if (!stats[userId]) {
-        stats[userId] = { totalTasks: 0, totalStoryPoints: 0 };
-      }
-      stats[userId].totalTasks += 1;
-      stats[userId].totalStoryPoints += typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0;
-    });
-
     const sprintId = sprintInfo?.id?.toString() || '';
-    return Object.entries(stats).map(([accountId, data]) => {
-      const sprintStats = assigneeStatsBySprint[sprintId]?.[accountId] || { qaRework: 0, delaysMinutes: 0 };
-      return {
-        name: users[accountId]?.name || accountId || "Unassigned",
-        totalTasks: data.totalTasks,
-        totalStoryPoints: data.totalStoryPoints,
-        averageComplexity: data.totalTasks > 0 ? data.totalStoryPoints / data.totalTasks : 0,
-        qaRework: sprintStats.qaRework,
-        delaysMinutes: sprintStats.delaysMinutes,
-      };
-    });
+    return calculateAssigneeStats(filteredTasks, assigneeStatsBySprint, sprintId, activeUsers, users);
   }, [filteredTasks, assigneeStatsBySprint, sprintInfo, activeUsers, users]);
 
-  // Calculate total story points and total tasks for the current sprint
-  const totalStoryPointsTarget = useMemo(() => {
-    const totalStoryPoints = filteredTasks.reduce((acc, task) => acc + (typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0), 0);
-    return totalStoryPoints / 2;
-  }, [filteredTasks]);
+  const totalStoryPointsTarget = useMemo(() => calculateTotalStoryPointsTarget(filteredTasks), [filteredTasks]);
+  const totalTasksTarget = useMemo(() => calculateTotalTasksTarget(filteredTasks), [filteredTasks]);
+  const sprintAverageComplexityTarget = useMemo(() => calculateSprintAverageComplexityTarget(totalStoryPointsTarget, totalTasksTarget), [totalStoryPointsTarget, totalTasksTarget]);
 
-  const totalTasksTarget = useMemo(() => {
-    return filteredTasks.length / 2;
-  }, [filteredTasks]);
+  const weightsSum = useMemo(() => calculateWeightsSum({
+    storyPoints: weightStoryPoints,
+    tasks: weightTasks,
+    complexity: weightComplexity,
+    rework: weightRework,
+    delays: weightDelays
+  }), [weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays]);
+  const weightsAreValid = useMemo(() => areWeightsValid(weightsSum), [weightsSum]);
 
-  const sprintAverageComplexityTarget = useMemo(() => {
-    return totalTasksTarget > 0 ? totalStoryPointsTarget / totalTasksTarget : 0;
-  }, [totalStoryPointsTarget, totalTasksTarget]);
-
-  // Validación: suma de ponderaciones debe ser exactamente 100
-  const weightsSum = useMemo(() => {
-    return weightStoryPoints + weightTasks + weightComplexity + weightRework + weightDelays;
-  }, [weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays]);
-
-  const weightsAreValid = useMemo(() => weightsSum === 100, [weightsSum]);
-
-  // The context value that will be provided to consuming components.
-  // It's memoized to prevent unnecessary re-renders of consumers.
   const value = useMemo(() => ({
     projects,
     sprints,
-    tasks: filteredTasks,
+    tasks: normalizedTasks,
     loading,
     error,
     sprintInfo,
     uniqueStatuses,
     assigneeStats,
-    assigneeStatsBySprint, // Exponer para modales
-    setAssigneeSprintStat, // Setter para edición
+    assigneeStatsBySprint,
+    setAssigneeSprintStat,
     fetchProjects,
     fetchSprints,
     fetchTasks,
@@ -604,10 +419,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     clearTasks,
     clearSprints,
     getRawTaskById,
-    excludeCarryover,
-    treatReviewDoneAsDone,
-    setExcludeCarryover,
-    setTreatReviewDoneAsDone,
     sprintQuality,
     setSprintQuality,
     historicalReworkRate,
@@ -624,25 +435,26 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     setWeightRework,
     weightDelays,
     setWeightDelays,
-    weightsSum, // suma total de ponderaciones
-    weightsAreValid, // booleano de validez
+    weightsSum,
+    weightsAreValid,
     reworkKpiUpperLimit,
     setReworkKpiUpperLimit,
     totalStoryPointsTarget,
     totalTasksTarget,
     sprintAverageComplexityTarget,
-        selectedProjectKey,
-        logMessages,
-        addLogMessage,
-        users,
-        activeUsers,
-        toggleUserActivation,
-        userTypes,
-        setUserType,
+    selectedProjectKey,
+    logMessages,
+    addLogMessage,
+    users,
+    activeUsers,
+    toggleUserActivation,
+    userTypes,
+    setUserType,
   }), [
     projects,
     sprints,
     filteredTasks,
+    normalizedTasks,
     loading,
     error,
     sprintInfo,
@@ -657,8 +469,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     clearTasks,
     clearSprints,
     getRawTaskById,
-    excludeCarryover,
-    treatReviewDoneAsDone,
     sprintQuality,
     setSprintQuality,
     historicalReworkRate,
@@ -693,6 +503,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   ]);
 
   return <JiraContext.Provider value={value}>{children}</JiraContext.Provider>;
-};
+}
 
-export { JiraContext }; // Export only the context
+// ...eliminado: exportación duplicada...
