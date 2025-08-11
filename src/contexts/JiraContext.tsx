@@ -141,11 +141,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const [sprintInfo, setSprintInfo] = useState<JiraSprint | null>(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
 
-  const [logMessages, setLogMessages] = useState<string[]>([]);
-
-  const addLogMessage = useCallback((message: string) => {
-    setLogMessages(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
-  }, []);
+  
 
   // Initialize state from localStorage or use default
   const [excludeCarryover, setExcludeCarryover] = useState<boolean>(
@@ -263,6 +259,8 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchProjects = useCallback(async () => {
     setLoading(true);
+    setLogMessages([]);
+    addLogMessage("Fetching projects...");
     setError(null);
     try {
       const response = await fetch('/api/jira/projects');
@@ -286,6 +284,8 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const fetchSprints = useCallback(async (projectKey: string) => {
     if (!projectKey) return;
     setLoading(true);
+    setLogMessages([]);
+    addLogMessage("Fetching sprints for project: " + projectKey);
     setError(null);
     try {
       const response = await fetch('/api/jira/sprints', {
@@ -314,6 +314,8 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const fetchTasks = useCallback(async (sprintId: number) => {
     if (!sprintId) return;
     setLoading(true);
+    setLogMessages([]);
+    addLogMessage("Fetching tasks for sprint: " + sprintId);
     setError(null);
     try {
       const selectedSprint = sprints.find(s => s.id === sprintId);
@@ -378,6 +380,8 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
 
   const forceUpdate = useCallback(async (sprintId: number) => {
     setLoading(true);
+    setLogMessages([]);
+    addLogMessage("Force updating tasks for sprint: " + sprintId);
     setError(null);
     try {
       // Tell the backend to force-refresh from Jira. The backend will
