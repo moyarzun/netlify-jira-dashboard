@@ -467,11 +467,12 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
 
   // Calculate total story points and total tasks for the current sprint
   const totalStoryPointsTarget = useMemo(() => {
-    return filteredTasks.reduce((acc, task) => acc + (typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0), 0);
+    const totalStoryPoints = filteredTasks.reduce((acc, task) => acc + (typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0), 0);
+    return totalStoryPoints / 2;
   }, [filteredTasks]);
 
   const totalTasksTarget = useMemo(() => {
-    return filteredTasks.length;
+    return filteredTasks.length / 2;
   }, [filteredTasks]);
 
   const sprintAverageComplexityTarget = useMemo(() => {
