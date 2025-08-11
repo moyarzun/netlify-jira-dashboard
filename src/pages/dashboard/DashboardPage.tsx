@@ -181,7 +181,7 @@ export const DashboardPage = () => {
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {assigneeStats && assigneeStats.map((stat: AssigneeStat) => {
           const assigneeTasks = tasks.filter(
             (task) => (task.assignee?.name || "Unassigned") === stat.name
