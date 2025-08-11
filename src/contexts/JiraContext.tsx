@@ -332,7 +332,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const fetchProjects = useCallback(async () => {
     setLoading(true);
     setLogMessages([]);
-    addLogMessage("Fetching projects...");
+    addLogMessage("Obteniendo proyectos...");
     setError(null);
     try {
       const response = await fetch('/api/jira/projects');
@@ -342,11 +342,11 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       }
       const data = await response.json();
       setProjects(data.projects || []);
-      addLogMessage("Projects fetched successfully.");
+      addLogMessage("Proyectos obtenidos correctamente.");
     } catch (err: unknown) {
-      addLogMessage("Error fetching projects: " + (err instanceof Error ? err.message : String(err)));
+      addLogMessage("Error al obtener proyectos: " + (err instanceof Error ? err.message : String(err)));
       if (err instanceof Error) setError(err.message);
-      else setError("An unknown error occurred while fetching projects.");
+      else setError("Ocurrió un error desconocido al obtener los proyectos.");
       setProjects([]);
     } finally {
       setLoading(false);
@@ -357,7 +357,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     if (!projectKey) return;
     setLoading(true);
     setLogMessages([]);
-    addLogMessage("Fetching sprints for project: " + projectKey);
+    addLogMessage("Obteniendo sprints para el proyecto: " + projectKey);
     setError(null);
     try {
       const response = await fetch('/api/jira/sprints', {
@@ -372,11 +372,11 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       const data = await response.json();
       setSprints(data.sprints || []);
       setSelectedProjectKey(projectKey); // Set the selected project key here
-      addLogMessage("Sprints fetched successfully for project: " + projectKey);
+      addLogMessage("Sprints obtenidos correctamente para el proyecto: " + projectKey);
     } catch (err: unknown) {
-      addLogMessage("Error fetching sprints: " + (err instanceof Error ? err.message : String(err)));
+      addLogMessage("Error al obtener sprints: " + (err instanceof Error ? err.message : String(err)));
       if (err instanceof Error) setError(err.message);
-      else setError("An unknown error occurred while fetching sprints.");
+      else setError("Ocurrió un error desconocido al obtener los sprints.");
       setSprints([]);
     } finally {
       setLoading(false);
@@ -387,7 +387,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     if (!sprintId) return;
     setLoading(true);
     setLogMessages([]);
-    addLogMessage("Fetching tasks for sprint: " + sprintId);
+    addLogMessage("Obteniendo tareas para el sprint: " + sprintId);
     setError(null);
     try {
       const selectedSprint = sprints.find(s => s.id === sprintId);
@@ -405,7 +405,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       const data = await response.json();
       // Detectar si la respuesta viene de cache o de Jira
       if (data.fromCache === true) {
-        addLogMessage("Data obtained from Cache.");
+      addLogMessage("Datos obtenidos desde caché.");
         // Guardar el ID del sprint en localStorage como parte de los sprints en caché
         try {
           const cacheKey = 'cachedSprintIds';
@@ -418,9 +418,9 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
           console.error('Error guardando cachedSprintIds en localStorage', e);
         }
       } else if (data.fromJira === true) {
-        addLogMessage("Data obtained directly from Jira.");
+      addLogMessage("Datos obtenidos directamente desde Jira.");
       } else {
-        addLogMessage("Data source not specified (could be Cache or Jira).");
+      addLogMessage("Fuente de datos no especificada (puede ser caché o Jira).");
       }
       
       // The user log shows the API returns an object like { issues: { issues: [...], total: ... } }
@@ -432,12 +432,12 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
         : [];
 
       setRawTasks(issues);
-      addLogMessage("Tasks fetched successfully for sprint: " + sprintId);
+      addLogMessage("Tareas obtenidas correctamente para el sprint: " + sprintId);
 
     } catch (err: unknown) {
-      addLogMessage("Error fetching tasks: " + (err instanceof Error ? err.message : String(err))); // Added for better debugging
+      addLogMessage("Error al obtener tareas: " + (err instanceof Error ? err.message : String(err)));
       if (err instanceof Error) setError(err.message);
-      else setError("An unknown error occurred while fetching tasks.");
+      else setError("Ocurrió un error desconocido al obtener las tareas.");
       setRawTasks([]); // Clear raw tasks on error
     } finally {
       setLoading(false);
@@ -447,7 +447,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
   const forceUpdate = useCallback(async (sprintId: number) => {
     setLoading(true);
     setLogMessages([]);
-    addLogMessage("Force updating tasks for sprint: " + sprintId);
+    addLogMessage("Forzando actualización de tareas para el sprint: " + sprintId);
     setError(null);
     try {
       // Tell the backend to force-refresh from Jira. The backend will
@@ -474,16 +474,16 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
         : [];
 
       setRawTasks(issues);
-      addLogMessage("Tasks force updated successfully for sprint: " + sprintId);
+      addLogMessage("Tareas actualizadas correctamente para el sprint: " + sprintId);
 
       // Also update sprintInfo, just like in fetchTasks
       const selectedSprint = sprints.find(s => s.id === sprintId);
       setSprintInfo(selectedSprint || null);
 
     } catch (err: unknown) {
-      addLogMessage("Error during force update: " + (err instanceof Error ? err.message : String(err)));
+      addLogMessage("Error durante la actualización forzada: " + (err instanceof Error ? err.message : String(err)));
       if (err instanceof Error) setError(err.message);
-      else setError("An unknown error occurred during the force update.");
+      else setError("Ocurrió un error desconocido durante la actualización forzada.");
       setRawTasks([]); // Clear raw tasks on error
     } finally {
       setLoading(false);

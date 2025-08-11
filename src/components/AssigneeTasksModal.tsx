@@ -57,7 +57,7 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="max-w-6xl">
         <DialogHeader>
-          <DialogTitle>Tasks Assigned to {assigneeName}</DialogTitle>
+          <DialogTitle>Tareas Asignadas a {assigneeName}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-2 items-center mb-2">
@@ -120,12 +120,12 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Task ID</TableHead>
-                  <TableHead>Task Name</TableHead>
-                  <TableHead>Issue Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead className="text-right">Story Points</TableHead>
+                  <TableHead>ID de Tarea</TableHead>
+                  <TableHead>Nombre de Tarea</TableHead>
+                  <TableHead>Tipo de Incidencia</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Prioridad</TableHead>
+                  <TableHead className="text-right">Puntos de Historia</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

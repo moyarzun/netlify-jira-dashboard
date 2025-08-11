@@ -142,7 +142,7 @@ export const DashboardPage = () => {
   }, []);
 
   if (loading) {
-    return <div>Loading dashboard...</div>;
+    return <div>Cargando dashboard...</div>;
   }
 
   const totalTasks = tasks.length;
@@ -159,7 +159,7 @@ export const DashboardPage = () => {
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">
-          Dashboard: {sprintInfo?.name || "No Sprint Selected"}
+          Dashboard: {sprintInfo?.name || "Ningún Sprint Seleccionado"}
         </h2>
         <div className="flex items-center space-x-2">
           <DashboardOptionsModal />
@@ -167,17 +167,17 @@ export const DashboardPage = () => {
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Tasks in Sprint"
+          title="Tareas Totales en Sprint"
           value={totalTasks.toString()}
           icon={<ListTodo className="h-4 w-4 text-muted-foreground" />}
         />
         <StatCard
-          title="Total Story Points"
+          title="Puntos de Historia Totales"
           value={totalStoryPoints.toString()}
           icon={<Star className="h-4 w-4 text-muted-foreground" />}
         />
         <StatCard
-          title="Tasks Completed"
+          title="Tareas Completadas"
           value={`${tasksDone} of ${totalTasks}`}
           icon={<CheckCircle className="h-4 w-4 text-muted-foreground" />}
         />
@@ -221,7 +221,7 @@ export const DashboardPage = () => {
                     onUpdateStats={handleUpdateAssigneeStats}
                   >
                     <Button variant="outline" size="sm" className="mt-2 w-full">
-                      Details
+                      Detalles
                     </Button>
                   </AssigneeTasksModal>
                 </div>

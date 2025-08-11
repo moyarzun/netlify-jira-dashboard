@@ -12,14 +12,14 @@ export const UserActivationManager = () => {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline">Manage Users</Button>
+        <Button variant="outline">Gestionar Usuarios</Button>
       </PopoverTrigger>
       <PopoverContent className="w-80">
         <div className="grid gap-4">
           <div className="space-y-2">
-            <h4 className="font-medium leading-none">Active Users</h4>
+            <h4 className="font-medium leading-none">Usuarios Activos</h4>
             <p className="text-sm text-muted-foreground">
-              Activate or deactivate users and assign their roles.
+              Activa o desactiva usuarios y asigna sus roles.
             </p>
           </div>
           <div className="grid gap-2">
@@ -32,7 +32,7 @@ export const UserActivationManager = () => {
                     onValueChange={(value) => setUserType(accountId, value)}
                   >
                     <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Select a role" />
+                      <SelectValue placeholder="Selecciona un rol" />
                     </SelectTrigger>
                     <SelectContent>
                       {userRoles.map(role => (

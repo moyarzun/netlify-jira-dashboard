@@ -182,7 +182,7 @@ export function DashboardOptionsModal() {
                     <Card>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">
-                          Unique Jira Statuses Detected (debug)
+                          Estados Únicos de Jira Detectados (debug)
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -198,24 +198,24 @@ export function DashboardOptionsModal() {
                   )}
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-sm font-medium">Tasks Overview</CardTitle>
+                      <CardTitle className="text-sm font-medium">Resumen de Tareas</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex flex-col gap-2">
                         <div className="flex justify-between text-sm">
-                          <span>Total Tasks</span>
+                          <span>Tareas Totales</span>
                           <span>{totalTasks}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span>Total Story Points</span>
+                          <span>Puntos de Historia Totales</span>
                           <span>{totalStoryPoints}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span>Completed Story Points</span>
+                          <span>Puntos de Historia Completados</span>
                           <span>{completedStoryPoints}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span>Progress</span>
+                          <span>Progreso</span>
                           <span>{`${progressPercentage.toFixed(2)}%`}</span>
                         </div>
                       </div>
