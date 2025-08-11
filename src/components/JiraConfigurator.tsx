@@ -22,12 +22,11 @@ export function JiraConfigurator() {
         const response = await fetch("/api/jira/config");
         if (response.ok) {
           const config = await response.json();
-          if (config && config.baseUrl && config.email) {
-            setBaseUrl(config.baseUrl);
-            setEmail(config.email);
-            // We don't set the API token for security reasons,
-            // but we can indicate that it's already set.
-            setApiToken("********");
+          if (config && config.config && config.config.baseUrl && config.config.email) {
+            setBaseUrl(config.config.baseUrl);
+            setEmail(config.config.email);
+            // Set the actual API token, which will be masked by the input type
+            setApiToken(config.config.apiToken);
           }
         }
       } catch (error) {
