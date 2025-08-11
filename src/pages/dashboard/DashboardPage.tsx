@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 // import { ForceJiraUpdateButton } from "@/components/ForceJiraUpdateButton";
 import { AssigneeTasksModal } from "@/components/AssigneeTasksModal";
 import { DashboardOptionsModal } from "@/components/DashboardOptionsModal";
+import { LoadingLogModal } from "@/components/LoadingLogModal";
 
 
 interface AssigneeStat {
@@ -41,6 +42,7 @@ export const DashboardPage = () => {
     totalStoryPointsTarget,
     totalTasksTarget,
     sprintAverageComplexityTarget,
+    logMessages,
   } = useJira();
 
   const [kpis, setKpis] = useState<Record<string, number>>({});
@@ -128,7 +130,7 @@ export const DashboardPage = () => {
         fetchKpis();
       }
     }
-  }, [assigneeStats, sprintInfo?.id, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, perfectWorkKpiLimit, historicalReworkRate, weightsSum, reworkKpiUpperLimit, totalStoryPointsTarget, totalTasksTarget, sprintAverageComplexityTarget]);
+  }, [assigneeStats, sprintInfo?.id, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, perfectWorkKpiLimit, historicalReworkRate, weightsSum, reworkKpiUpperLimit, totalStoryPointsTarget, totalTasksTarget, sprintAverageComplexityTarget, excludeCarryover, treatReviewDoneAsDone]);
 
   // Función para actualizar el cache y localStorage desde el modal
   const handleUpdateAssigneeStats = useCallback((assigneeName: string, qaRework: number, delaysMinutes: number) => {
