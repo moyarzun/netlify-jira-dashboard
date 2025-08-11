@@ -73,7 +73,8 @@ export function DataTable<TData, TValue>({
   return (
     <div className="space-y-4">
       <DataTableToolbar table={table} statuses={statuses} />
-      <div className="rounded-md border">
+      <div className="relative w-full overflow-auto">
+        <div className="rounded-md border">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -131,6 +132,7 @@ export function DataTable<TData, TValue>({
             )}
           </TableBody>
         </Table>
+
         </div>
       </div>
       <DataTablePagination table={table} />
