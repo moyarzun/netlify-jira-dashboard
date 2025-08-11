@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 export function JiraConfigurator() {
   const [baseUrl, setBaseUrl] = useState("");
