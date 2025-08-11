@@ -52,10 +52,19 @@ export function JiraConfigurator() {
 
     setIsLoading(true);
     try {
+      const payload: { baseUrl: string; email: string; apiToken?: string } = {
+        baseUrl,
+        email,
+      };
+
+      if (apiToken !== "") {
+        payload.apiToken = apiToken;
+      }
+
       const response = await fetch("/api/jira/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl, email, apiToken }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
