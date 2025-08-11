@@ -369,12 +369,6 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
       setRawTasks(issues);
       addLogMessage("Tasks fetched successfully for sprint: " + sprintId);
 
-      // After successfully fetching tasks, re-fetch sprints for the current project
-      // Ensure selectedProjectKey is not null before calling fetchSprints
-      if (selectedProjectKey) {
-        await fetchSprints(selectedProjectKey);
-      }
-
     } catch (err: unknown) {
       addLogMessage("Error fetching tasks: " + (err instanceof Error ? err.message : String(err))); // Added for better debugging
       if (err instanceof Error) setError(err.message);
