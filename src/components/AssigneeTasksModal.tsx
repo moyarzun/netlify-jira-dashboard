@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil, Check } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useJira } from "@/hooks/useJira";
 
 interface AssigneeTasksModalProps {
   assigneeName: string;
@@ -126,6 +127,7 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                   <TableHead>Estado</TableHead>
                   <TableHead>Prioridad</TableHead>
                   <TableHead className="text-right">Puntos de Historia</TableHead>
+                  <TableHead>Tipo de Usuario</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -133,6 +135,14 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                   const issueType = labels.find((l) => l.value === task.label);
                   const status = statuses.find((s) => s.value === task.status);
                   const priority = priorities.find((p) => p.value === task.priority);
+                  const { userTypes } = useJira();
+                  const assigneeAccountId = task.assignee?.accountId;
+                  const userType = assigneeAccountId ? userTypes[assigneeAccountId] || "Sin asignación" : "Sin asignación";
+                  // Badge color según tipo
+                  let badgeColor = "bg-gray-400 text-white";
+                  if (userType === "Desarrollador") badgeColor = "bg-blue-600 text-white";
+                  else if (userType === "QA") badgeColor = "bg-green-600 text-white";
+                  else if (userType !== "Sin asignación" && userType !== "Sin tipo") badgeColor = "bg-yellow-500 text-white";
 
                   return (
                     <TableRow key={task.id}>
@@ -171,6 +181,16 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                         </div>
                       </TableCell>
                       <TableCell className="text-right">{task.storyPoints || 0}</TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${badgeColor}`}
+                          tabIndex={0}
+                          aria-label={`Tipo de usuario: ${userType}`}
+                          role="status"
+                        >
+                          {userType}
+                        </span>
+                      </TableCell>
                     </TableRow>
                   );
                 })}

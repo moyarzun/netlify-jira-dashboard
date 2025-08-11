@@ -12,6 +12,8 @@ import type { Task } from "@/data/schema"
 import { mapJiraStatus } from "@/helpers/status-mapper"
 import { mapJiraPriority } from "@/helpers/priority-mapper";
 import { CarryoverCell } from "@/components/CarryoverCell";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useJira } from "@/hooks/useJira";
 
 export const columns: ColumnDef<Task>[] = [
 	{
@@ -140,6 +142,36 @@ export const columns: ColumnDef<Task>[] = [
 		},
 		filterFn: (row, id, value) => {
 			return value.includes(row.getValue(id))
+		},
+	},
+	{
+		accessorKey: "assignee.accountId", // Assuming this path exists in Task
+		header: ({ column }) => (
+			<DataTableColumnHeader column={column} title="Tipo de Usuario" />
+		),
+		cell: ({ row }) => {
+			const { userTypes, setUserType } = useJira();
+			const assignee = row.original.assignee;
+			const accountId = assignee?.accountId;
+			const userRole = accountId ? userTypes[accountId] || "Sin asignación" : "Sin asignación";
+			const userRoles = ["Sin asignación", "Desarrollo", "Quality Assurance", "Tech Leader", "Product Owner"];
+
+			return (
+				<Select
+					value={userRole}
+					onValueChange={(value) => accountId && setUserType(accountId, value)}
+					disabled={!accountId}
+				>
+					<SelectTrigger className="w-[180px]">
+						<SelectValue placeholder="Selecciona un rol" />
+					</SelectTrigger>
+					<SelectContent>
+						{userRoles.map(role => (
+							<SelectItem key={role} value={role}>{role}</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			);
 		},
 	},
 	{

@@ -182,17 +182,25 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const newUsers = { ...users };
+      // Get the current users from localStorage
+      const storedUsers = JSON.parse(window.localStorage.getItem('users') || '{}');
+      const updatedUsers = { ...storedUsers }; // Start with stored users
+
       rawTasks.forEach(task => {
-        if (task.assignee && task.assignee.accountId && !newUsers[task.assignee.accountId]) {
-          newUsers[task.assignee.accountId] = {
-            name: task.assignee.name,
-            avatarUrl: task.assignee.avatarUrl,
-          };
+        if (task.assignee) {
+          // Usar accountId si existe, si no usar name como identificador
+          const userId = task.assignee.accountId || task.assignee.name;
+          if (userId && !updatedUsers[userId]) {
+            updatedUsers[userId] = {
+              name: task.assignee.name || userId,
+              avatarUrl: task.assignee.avatarUrl,
+            };
+          }
         }
       });
-      setUsers(newUsers);
-      window.localStorage.setItem('users', JSON.stringify(newUsers));
+      setUsers(updatedUsers);
+      window.localStorage.setItem('users', JSON.stringify(updatedUsers));
+      console.log("JiraContext: rawTasks updated, newUsers:", JSON.stringify(updatedUsers, null, 2));
     }
   }, [rawTasks]);
 
@@ -208,12 +216,12 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [activeUsers]);
 
-  const toggleUserActivation = (userId: string) => {
+  const toggleUserActivation = useCallback((userId: string) => {
     setActiveUsers(prev => ({
       ...prev,
       [userId]: !prev[userId],
     }));
-  };
+  }, []);
 
   const [userTypes, setUserTypes] = useState<Record<string, string>>(() => {
     if (typeof window === 'undefined') return {};
@@ -227,12 +235,12 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [userTypes]);
 
-  const setUserType = (userId: string, userType: string) => {
+  const setUserType = useCallback((userId: string, userType: string) => {
     setUserTypes(prev => ({
       ...prev,
       [userId]: userType,
     }));
-  };
+  }, []);
 
   // Estado para stats por sprint y desarrollador
   const [assigneeStatsBySprint, setAssigneeStatsBySprint] = useState<AssigneeSprintStats>(() => {
@@ -305,15 +313,21 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     return rawTasks.map(task => {
       // Cast seguro para obtener sprintHistory
       const sprintHistory = getAllSprintIdsFromChangelog(task as IssueWithChangelog) || [];
+      // Obtener el identificador del usuario asignado
+      const assignee = task.assignee;
+      const userId = assignee?.accountId || assignee?.name;
+      // Obtener el tipo de usuario desde el contexto
+      const userType = userId ? userTypes[userId] || "Sin tipo" : "Sin tipo";
       return {
         ...task,
         status: mapJiraStatus(task.status, treatReviewDoneAsDone),
         priority: mapJiraPriority(task.priority),
         label: mapJiraIssueType(task.label),
         sprintHistory, // array de strings, nunca undefined
+        userType,
       };
     });
-  }, [rawTasks, treatReviewDoneAsDone]);
+  }, [rawTasks, treatReviewDoneAsDone, userTypes]);
 
   const filteredTasks = useMemo(() => {
     
@@ -351,7 +365,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [addLogMessage]);
 
   const fetchSprints = useCallback(async (projectKey: string) => {
     if (!projectKey) return;
@@ -381,7 +395,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [addLogMessage]);
 
   const fetchTasks = useCallback(async (sprintId: number) => {
     if (!sprintId) return;
@@ -431,8 +445,18 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
         ? data.issues
         : [];
 
+      // LOG SOLO DATOS RELEVANTES PARA DEPURAR USUARIOS
+      // Mostrar id y assignee de cada tarea
+      console.log('fetchTasks: issues (id, assignee):', (issues as ApiTask[]).map((t: ApiTask) => ({ id: t.id, assignee: t.assignee })));
+      // Extraer usuarios únicos
+      const usuariosUnicos = Array.from(new Set((issues as ApiTask[]).map((t: ApiTask) => t.assignee?.accountId).filter(Boolean)));
+      console.log('fetchTasks: usuarios únicos detectados:', usuariosUnicos);
+      if (usuariosUnicos.length === 0) {
+        console.warn('fetchTasks: No se detectaron usuarios asignados en las tareas.');
+      }
       setRawTasks(issues);
       addLogMessage("Tareas obtenidas correctamente para el sprint: " + sprintId);
+      console.log("JiraContext: rawTasks:", JSON.stringify(issues, null, 2));
 
     } catch (err: unknown) {
       addLogMessage("Error al obtener tareas: " + (err instanceof Error ? err.message : String(err)));
@@ -442,7 +466,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [sprints, selectedProjectKey, fetchSprints]);
+  }, [sprints, addLogMessage]);
 
   const forceUpdate = useCallback(async (sprintId: number) => {
     setLoading(true);
@@ -488,7 +512,7 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [sprints]);
+  }, [sprints, addLogMessage]);
 
   const clearTasks = useCallback(() => {
     setRawTasks([]); // Clear raw tasks
@@ -511,22 +535,25 @@ export const JiraProvider = ({ children }: { children: ReactNode }) => {
 
     filteredTasks.forEach(task => {
       const assignee = task.assignee;
-      if (!assignee || activeUsers[assignee.accountId] === false) {
-        return; // Skip inactive users or tasks without assignee
+      if (!assignee) {
+        return; // Skip tasks without assignee
       }
-
-      if (!stats[assignee.accountId]) {
-        stats[assignee.accountId] = { totalTasks: 0, totalStoryPoints: 0 };
+      const userId = assignee.accountId || assignee.name;
+      if (!userId || activeUsers[userId] === false) {
+        return; // Skip inactive users or tasks without identificador
       }
-      stats[assignee.accountId].totalTasks += 1;
-      stats[assignee.accountId].totalStoryPoints += typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0;
+      if (!stats[userId]) {
+        stats[userId] = { totalTasks: 0, totalStoryPoints: 0 };
+      }
+      stats[userId].totalTasks += 1;
+      stats[userId].totalStoryPoints += typeof task.storyPoints === "number" && !isNaN(task.storyPoints) ? task.storyPoints : 0;
     });
 
     const sprintId = sprintInfo?.id?.toString() || '';
     return Object.entries(stats).map(([accountId, data]) => {
       const sprintStats = assigneeStatsBySprint[sprintId]?.[accountId] || { qaRework: 0, delaysMinutes: 0 };
       return {
-        name: users[accountId]?.name || "Unassigned",
+        name: users[accountId]?.name || accountId || "Unassigned",
         totalTasks: data.totalTasks,
         totalStoryPoints: data.totalStoryPoints,
         averageComplexity: data.totalTasks > 0 ? data.totalStoryPoints / data.totalTasks : 0,

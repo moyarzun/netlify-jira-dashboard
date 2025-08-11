@@ -38,25 +38,25 @@ export function ViewOptions() {
           className="ml-auto flex h-8"
         >
           <MixerHorizontalIcon className="mr-2 h-4 w-4" />
-          View
+          Vista
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[180px]">
-        <DropdownMenuLabel>View options</DropdownMenuLabel>
+        <DropdownMenuLabel>Opciones de Vista</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuCheckboxItem
           className="capitalize"
           checked={excludeCarryover}
           onCheckedChange={setExcludeCarryover}
         >
-          Exclude Carryover tasks
+          Excluir tareas arrastradas
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           className="capitalize"
           checked={treatReviewDoneAsDone}
           onCheckedChange={setTreatReviewDoneAsDone}
         >
-          Review Done as Done
+          Considerar Revisión como Hecho
         </DropdownMenuCheckboxItem>
       </DropdownMenuContent>
     </DropdownMenu>
