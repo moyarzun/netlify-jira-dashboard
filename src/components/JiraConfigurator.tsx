@@ -10,6 +10,7 @@ export function JiraConfigurator() {
   const [baseUrl, setBaseUrl] = useState("");
   const [email, setEmail] = useState("");
   const [apiToken, setApiToken] = useState("");
+  const [showApiToken, setShowApiToken] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -106,13 +107,29 @@ export function JiraConfigurator() {
       </div>
       <div className="grid gap-2">
         <Label htmlFor="apiToken">Jira API Token</Label>
-        <Input
-          id="apiToken"
-          type="password"
-          placeholder="Your API Token"
-          value={apiToken}
-          onChange={(e) => setApiToken(e.target.value)}
-        />
+        <div className="relative">
+            <Input
+              id="apiToken"
+              type={showApiToken ? "text" : "password"}
+              placeholder="Your API Token"
+              value={apiToken}
+              onChange={(e) => setApiToken(e.target.value)}
+              className="pr-10" // Add padding for the eye icon
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+              onClick={() => setShowApiToken((prev) => !prev)}
+            >
+              {showApiToken ? (
+                <EyeOff className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <Eye className="h-4 w-4 text-muted-foreground" />
+              )}
+            </Button>
+          </div>
       </div>
       <Button onClick={handleSave} disabled={isLoading}>
         {isLoading ? "Saving..." : "Save Configuration"}
