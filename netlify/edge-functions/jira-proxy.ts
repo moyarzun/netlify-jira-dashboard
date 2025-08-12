@@ -298,15 +298,95 @@ export default async (request: Request, context: Context) => {
 
       switch (endpoint) {
         case "status":
-          // Logic to fetch Jira statuses
-          const statusesUrl = `${JIRA_BASE_URL}/rest/api/3/status`;
+          const projectKey = url.searchParams.get("projectKey");
+          if (!projectKey) {
+            return jsonResponse(400, { error: "Missing 'projectKey' query parameter for status endpoint" });
+          }
+
+          const cacheKeyStatus = `statuses-${projectKey}`;
+          if (!forceUpdate) {
+            const cachedStatuses = await cacheStore.get(cacheKeyStatus, { type: "json" });
+            if (cachedStatuses) {
+              return jsonResponse(200, { statuses: cachedStatuses, fromCache: true });
+            }
+          }
+
+          const statusesUrl = `${JIRA_BASE_URL}/rest/api/3/project/${projectKey}/statuses`;
           const statusesResponse = await fetch(statusesUrl, { headers: baseHeaders });
           if (!statusesResponse.ok) {
-            throw new Error(`Failed to fetch statuses: ${await statusesResponse.text()}`);
+            throw new Error(`Failed to fetch statuses for project ${projectKey}: ${await statusesResponse.text()}`);
           }
           const statuses = await statusesResponse.json();
-          return jsonResponse(200, { statuses });
-        // Add more cases for other endpoints if needed in the future
+          const flattenedStatuses = statuses.flatMap((issueType: any) => issueType.statuses);
+          const uniqueStatuses = Array.from(new Map(flattenedStatuses.map((s: any) => [s.id, s])).values());
+          
+          await cacheStore.setJSON(cacheKeyStatus, uniqueStatuses);
+          return jsonResponse(200, { statuses: uniqueStatuses });
+
+        case "users":
+          const usersProjectKey = url.searchParams.get("projectKey");
+          if (!usersProjectKey) {
+            return jsonResponse(400, { error: "Missing 'projectKey' query parameter for users endpoint" });
+          }
+
+          const cacheKeyUsers = `users-by-role-${usersProjectKey}`;
+          if (!forceUpdate) {
+            const cachedUsers = await cacheStore.get(cacheKeyUsers, { type: "json" });
+            if (cachedUsers) {
+              return jsonResponse(200, { users: cachedUsers, fromCache: true });
+            }
+          }
+
+          // 1. Get Project ID from Project Key
+          const projectDetailsUrl = `${JIRA_BASE_URL}/rest/api/3/project/${usersProjectKey}`;
+          const projectDetailsResponse = await fetch(projectDetailsUrl, { headers: baseHeaders });
+          if (!projectDetailsResponse.ok) {
+            throw new Error(`Failed to fetch project details for ${usersProjectKey}: ${await projectDetailsResponse.text()}`);
+          }
+          const projectDetails = await projectDetailsResponse.json();
+          const projectId = projectDetails.id;
+
+          // 2. Get all project roles
+          const projectRolesUrl = `${JIRA_BASE_URL}/rest/api/3/project/${projectId}/role`;
+          const projectRolesResponse = await fetch(projectRolesUrl, { headers: baseHeaders });
+          if (!projectRolesResponse.ok) {
+            throw new Error(`Failed to fetch project roles for ${usersProjectKey}: ${await projectRolesResponse.text()}`);
+          }
+          const projectRoles = await projectRolesResponse.json();
+
+          const allUsers: any[] = [];
+          const uniqueUserIds = new Set<string>();
+
+          // 3. For each role, get the users
+          for (const roleName in projectRoles) {
+            const roleUrl = projectRoles[roleName]; // This URL already contains projectId and roleId
+            const roleDetailsResponse = await fetch(roleUrl, { headers: baseHeaders });
+            if (!roleDetailsResponse.ok) {
+              context.log(`Warning: Failed to fetch details for role ${roleName}: ${await roleDetailsResponse.text()}`);
+              continue;
+            }
+            const roleDetails = await roleDetailsResponse.json();
+            
+            // Actors can be users or groups. We only care about users for now.
+            if (roleDetails.actors) {
+              for (const actor of roleDetails.actors) {
+                if (actor.type === "atlassian-user" && actor.actorUser) {
+                  if (!uniqueUserIds.has(actor.actorUser.accountId)) {
+                    allUsers.push({
+                      accountId: actor.actorUser.accountId,
+                      displayName: actor.actorUser.displayName,
+                      avatarUrls: actor.actorUser.avatarUrls,
+                    });
+                    uniqueUserIds.add(actor.actorUser.accountId);
+                  }
+                }
+              }
+            }
+          }
+          
+          await cacheStore.setJSON(cacheKeyUsers, allUsers);
+          return jsonResponse(200, { users: allUsers });
+
         default:
           return jsonResponse(404, { error: `Unknown endpoint: ${endpoint}` });
       }

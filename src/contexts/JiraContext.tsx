@@ -2,7 +2,60 @@
 
 import { createContext, useState, useMemo, useCallback, useEffect } from 'react';
 
-const JiraContext = createContext<JiraContextType | undefined>(undefined);
+const defaultJiraContext: JiraContextType = {
+  projects: [],
+  sprints: [],
+  tasks: [],
+  loading: false,
+  error: null,
+  sprintInfo: null,
+  uniqueStatuses: [],
+  assigneeStats: [],
+  assigneeStatsBySprint: {},
+  setAssigneeSprintStat: () => {},
+  fetchProjects: async () => {},
+  fetchSprints: async () => {},
+  fetchTasks: async () => {},
+  forceUpdate: async () => {},
+  clearTasks: () => {},
+  clearSprints: () => {},
+  getRawTaskById: () => undefined,
+  sprintQuality: 0,
+  setSprintQuality: () => {},
+  historicalReworkRate: 0,
+  setHistoricalReworkRate: () => {},
+  perfectWorkKpiLimit: 0,
+  setPerfectWorkKpiLimit: () => {},
+  weightStoryPoints: 0,
+  setWeightStoryPoints: () => {},
+  weightTasks: 0,
+  setWeightTasks: () => {},
+  weightComplexity: 0,
+  setWeightComplexity: () => {},
+  weightRework: 0,
+  setWeightRework: () => {},
+  weightDelays: 0,
+  setWeightDelays: () => {},
+  weightsSum: 0,
+  weightsAreValid: false,
+  reworkKpiUpperLimit: 0,
+  setReworkKpiUpperLimit: () => {},
+  totalStoryPointsTarget: 0,
+  totalTasksTarget: 0,
+  sprintAverageComplexityTarget: 0,
+  selectedProjectKey: null,
+  logMessages: [],
+  addLogMessage: () => {},
+  users: {},
+  activeUsers: {},
+  toggleUserActivation: () => {},
+  userTypes: {},
+  setUserType: () => {},
+  projectStatuses: [],
+  fetchProjectStatuses: async () => {},
+};
+
+const JiraContext = createContext<JiraContextType>(defaultJiraContext);
 export { JiraContext };
 import { mapJiraIssueType } from '@/helpers/issue-type-mapper';
 import { mapJiraPriority } from '@/helpers/priority-mapper';
@@ -34,6 +87,13 @@ export interface AssigneeStat {
   averageComplexity: number;
   qaRework: number; // Retrabajos de QA
   delaysMinutes: number; // Atrasos (Minutos)
+}
+
+export interface JiraStatus {
+  id: string;
+  name: string;
+  description?: string;
+  statusCategory?: { id: number; name: string };
 }
 
 // Define the JiraContextType interface
@@ -84,8 +144,10 @@ export interface JiraContextType {
   users: Record<string, { name: string; avatarUrl: string; }>;
   activeUsers: Record<string, boolean>;
   toggleUserActivation: (accountId: string) => void;
-  userTypes: Record<string, string>;
+        userTypes: Record<string, string>;
   setUserType: (accountId: string, type: string) => void;
+  projectStatuses: JiraStatus[];
+  fetchProjectStatuses: (projectKey: string) => Promise<void>;
 }
 
 // ...eliminado: tipo no usado...
@@ -116,7 +178,7 @@ const getKpiNumber = (key: string, fallback: number): number => {
 };
 
 export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
-  console.log("JiraProvider: Component rendering...");
+  console.log("JiraProvider: Component rendering... (New Log)");
   // Estado para mensajes de log de carga
   const [logMessages, setLogMessages] = useState<string[]>([]);
   const addLogMessage = useCallback((message: string) => {
@@ -208,6 +270,40 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
       [userId]: userType,
     }));
   }, []);
+
+  const [projectStatuses, setProjectStatuses] = useState<JiraStatus[]>([]);
+
+  const fetchProjectStatuses = useCallback(async (projectKey: string) => {
+    if (!projectKey) return;
+    addLogMessage(`Obteniendo estados para el proyecto: ${projectKey}...`);
+    try {
+      const cachedStatuses = localStorage.getItem(`projectStatuses-${projectKey}`);
+      if (cachedStatuses) {
+        setProjectStatuses(JSON.parse(cachedStatuses));
+        addLogMessage(`Estados para ${projectKey} cargados desde localStorage.`);
+      }
+
+      const response = await fetch(`/api/jira-proxy?endpoint=status&projectKey=${projectKey}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch statuses: ${response.statusText}`);
+      }
+      const data = await response.json();
+      const fetchedStatuses: JiraStatus[] = data.statuses || [];
+      setProjectStatuses(fetchedStatuses);
+      localStorage.setItem(`projectStatuses-${projectKey}`, JSON.stringify(fetchedStatuses));
+      addLogMessage(`Estados para ${projectKey} obtenidos y guardados.`);
+      console.log(`Lista de estados para el proyecto ${projectKey}:`, fetchedStatuses); // Add this line
+    } catch (error) {
+      addLogMessage(`Error al obtener estados para ${projectKey}: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`Error fetching statuses for project ${projectKey}:`, error);
+    }
+  }, [addLogMessage]);
+
+  useEffect(() => {
+    if (selectedProjectKey) {
+      fetchProjectStatuses(selectedProjectKey);
+    }
+  }, [selectedProjectKey, fetchProjectStatuses]);
 
   const [assigneeStatsBySprint, setAssigneeStatsBySprint] = useState<AssigneeSprintStats>(() => {
     if (typeof window === 'undefined') return {};
@@ -368,6 +464,7 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
   }, [addLogMessage]);
 
   const fetchTasks = useCallback(async (sprintId: number) => {
+    console.log(`fetchTasks called for sprintId: ${sprintId}`); // Added log
     if (!sprintId) return;
     setLoading(true);
     setLogMessages([]);
@@ -417,6 +514,15 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
       setRawTasks(issues);
       addLogMessage("Tareas obtenidas correctamente para el sprint: " + sprintId);
       console.log("JiraContext: rawTasks:", JSON.stringify(issues, null, 2));
+
+      // Log unique assignees from sprint tasks
+      if (issues && issues.length > 0) { // Added check for empty issues array
+        const uniqueAssignees = Array.from(new Set(issues.map((task: any) => task.assignee?.displayName).filter(Boolean)));
+        console.log(`Usuarios asignados a tareas en el sprint ${sprintId}:`, uniqueAssignees);
+      } else {
+        console.log(`No tasks found for sprint ${sprintId}, so no assignees to log.`);
+      }
+
     } catch (err: unknown) {
       addLogMessage("Error al obtener tareas: " + (err instanceof Error ? err.message : String(err)));
       if (err instanceof Error) setError(err.message);
@@ -543,6 +649,8 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
     toggleUserActivation,
     userTypes,
     setUserType,
+    projectStatuses,
+    fetchProjectStatuses,
   }), [
     projects,
     sprints,
@@ -593,9 +701,9 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
     toggleUserActivation,
     userTypes,
     setUserType,
+    projectStatuses,
+    fetchProjectStatuses,
   ]);
 
   return <JiraContext.Provider value={value}>{children}</JiraContext.Provider>;
 }
-
-// ...eliminado: exportación duplicada...

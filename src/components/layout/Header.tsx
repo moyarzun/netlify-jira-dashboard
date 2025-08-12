@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import JiraSettingsPopover from "./JiraSettingsPopover";
 import SprintSelector from "./SprintSelector";
 import { UserActivationManager } from "@/components/UserActivationManager";
-
 const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
   return (
     <header className="flex items-center justify-between px-4 py-2 bg-white border-b">
@@ -26,5 +25,7 @@ const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
     </header>
   );
 };
+
+
 
 export default Header;
