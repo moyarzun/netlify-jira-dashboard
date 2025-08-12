@@ -14,13 +14,14 @@ import {
 
 import { taskSchema } from "@/data/schema"
 import { useJira } from "@/hooks/useJira"
+import type { JiraContextType } from "@/contexts/JiraContext"
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>
 }
 
 export function DataTableRowActions<TData>({ row }: DataTableRowActionsProps<TData>) {
-  const { getRawTaskById } = useJira()
+  const { getRawTaskById } = useJira() as JiraContextType
   const task = taskSchema.parse(row.original)
 
   const handleShowJson = () => {

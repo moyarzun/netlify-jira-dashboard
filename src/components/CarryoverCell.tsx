@@ -1,13 +1,14 @@
 import { useContext, useState, useRef, useEffect } from "react";
 import { JiraContext } from "@/contexts/JiraContext";
+import type { JiraContextType } from "@/contexts/JiraContext";
 import { isCarryover } from "@/helpers/is-carryover";
 
 // Componente visual y accesible para mostrar el estado carryover
 export const CarryoverCell = ({ sprintHistory }: { sprintHistory: string[] }) => {
-  const jiraContext = useContext(JiraContext);
-  const selectedSprintId = jiraContext?.sprintInfo?.id?.toString();
-  const closedSprintIds = jiraContext?.sprints?.filter(s => s.state === "closed").map(s => s.id.toString()) ?? [];
-  const carryover = isCarryover({ task: { sprintHistory }, selectedSprintId, closedSprintIds });
+  const jiraContext = useContext(JiraContext) as JiraContextType;
+  const selectedSprint = jiraContext?.sprintInfo;
+  const allSprints = jiraContext?.sprints || [];
+  const carryover = isCarryover({ task: { sprintHistory }, selectedSprint, allSprints });
 
   // Mapear los nombres de los sprints si están disponibles en el contexto
   const sprintNames = sprintHistory.map(id => {

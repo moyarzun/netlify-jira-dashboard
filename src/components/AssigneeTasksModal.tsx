@@ -9,12 +9,14 @@ import { Pencil, Check } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useJira } from "@/hooks/useJira";
 
+import type { JiraSprint } from '@/helpers/sprint-history';
+
 interface AssigneeTasksModalProps {
   assigneeName: string;
   tasks: Task[];
   children: React.ReactNode;
   onUpdateStats?: (assigneeName: string, qaRework: number, delaysMinutes: number) => void;
-  sprints?: { id: string; sequence: number }[];
+  sprints?: JiraSprint[];
   selectedSprintId?: string;
 }
 import { isCarryover } from "@/helpers/is-carryover";
@@ -144,8 +146,9 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                   const assigneeName = task.assignee?.name;
                   const userType = assigneeName ? userTypes[assigneeName] || "Sin asignación" : "Sin asignación";
                   // Estado Nueva/Carryover usando props
-                  const isCarry = sprints && selectedSprintId
-                    ? isCarryover({ task, selectedSprintId, sprints })
+                  const selectedSprint = sprints?.find(s => String(s.id) === selectedSprintId);
+                  const isCarry = selectedSprint
+                    ? isCarryover({ task, selectedSprint, allSprints: sprints || [] })
                     : false;
                   let badgeColor = "bg-gray-400 text-white";
                   if (userType === "Desarrollador") badgeColor = "bg-blue-600 text-white";

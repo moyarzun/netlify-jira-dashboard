@@ -66,7 +66,7 @@ export const handler: Handler = async (event) => {
       statusCode: 200,
       body: JSON.stringify({ kpis }),
     };
-  } catch (e) {
+  } catch {
     return {
       statusCode: 400,
       body: JSON.stringify({ error: 'Invalid JSON' }),

@@ -24,10 +24,6 @@ interface KpiConfig {
 }
 
 function calculateKpi(stat: AssigneeStat, config: KpiConfig): number {
-  console.log(`[KPI Calculation] Starting for assignee: ${stat.name}`);
-  console.log(`[KPI Calculation] Input AssigneeStat: ${JSON.stringify(stat, null, 2)}`);
-  console.log(`[KPI Calculation] Input KpiConfig: ${JSON.stringify(config, null, 2)}`);
-
   const {
     weightStoryPoints,
     weightTasks,
@@ -53,14 +49,6 @@ function calculateKpi(stat: AssigneeStat, config: KpiConfig): number {
   const complexityPct = sprintAverageComplexityTarget > 0 ? (avgComplexity / sprintAverageComplexityTarget) : 0;
   const reworkPct = historicalReworkRate > 0 && tasksCount > 0 ? (reworkKpiUpperLimit - ((qaRework / tasksCount) / historicalReworkRate)) : 1;
   const delaysPct = delays > 0 ? Math.max(1 - (delays / 60), 0) : 1;
-
-  console.log(`[KPI Calculation] Intermediate Percentages:`);
-  console.log(`  - storyPointsPct: ${storyPointsPct}`);
-  console.log(`  - tasksPct: ${tasksPct}`);
-  console.log(`  - complexityPct: ${complexityPct}`);
-  console.log(`  - reworkPct: ${reworkPct}`);
-  console.log(`  - delaysPct: ${delaysPct}`);
-
   const kpiRaw =
     storyPointsPct * weightStoryPoints +
     tasksPct * weightTasks +
@@ -68,16 +56,11 @@ function calculateKpi(stat: AssigneeStat, config: KpiConfig): number {
     reworkPct * weightRework +
     delaysPct * weightDelays;
 
-  console.log(`[KPI Calculation] Raw KPI (kpiRaw): ${kpiRaw}`);
-
   const kpi = weightsSum > 0 ? Math.round((kpiRaw / weightsSum) * 100) : 0;
-
-  console.log(`[KPI Calculation] Final KPI for ${stat.name}: ${kpi}`);
   return kpi;
 }
 
 export const handler: Handler = async (event) => {
-  console.log('[api-kpi] Function invoked. Received event:', JSON.stringify(event, null, 2));
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -101,7 +84,7 @@ export const handler: Handler = async (event) => {
       statusCode: 200,
       body: JSON.stringify({ kpis }),
     };
-  } catch (e) {
+  } catch {
     return {
       statusCode: 400,
       body: JSON.stringify({ error: 'Invalid JSON' }),

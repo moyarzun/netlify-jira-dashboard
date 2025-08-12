@@ -5,24 +5,16 @@ import { type VisibilityState } from "@tanstack/react-table";
 import { columns } from "@/components/columns";
 import { DataTable } from "@/components/data-table";
 import { useJira } from "@/hooks/useJira";
+import type { JiraContextType } from "@/contexts/JiraContext";
 import { taskSchema } from "@/data/schema";
-import { statuses as allStatuses } from "@/data/data";
-
 export default function TasksPage() {
-  const { tasks, loading: isLoading, uniqueStatuses } = useJira();
+  const { tasks, loading: isLoading, sprints, sprintInfo } = useJira() as JiraContextType;
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
   // Ensure tasks are validated against the schema
   const validatedTasks = z.array(taskSchema).parse(tasks);
 
-  const statusOptions = uniqueStatuses.map((status) => {
-    const staticStatus = allStatuses.find((s) => s.value === status);
-    return {
-      label: staticStatus?.label || status,
-      value: status,
-      icon: staticStatus?.icon,
-    };
-  });
+  
 
   return (
     <div className="h-full flex-1 flex-col space-y-8 p-8 md:flex">
@@ -40,7 +32,10 @@ export default function TasksPage() {
         isLoading={isLoading}
         columnVisibility={columnVisibility}
         setColumnVisibility={setColumnVisibility}
-        statuses={statusOptions}
+        meta={{
+          sprints: sprints,
+          selectedSprintId: sprintInfo?.id?.toString(),
+        }}
       />
     </div>
   );

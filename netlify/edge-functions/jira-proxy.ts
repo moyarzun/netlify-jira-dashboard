@@ -289,6 +289,29 @@ export default async (request: Request, context: Context) => {
       return jsonResponse(200, { issues: transformedIssues });
     }
 
+    // --- Endpoint: /api/jira-proxy ---
+    if (url.pathname.includes("/api/jira-proxy")) {
+      const endpoint = url.searchParams.get("endpoint");
+      if (!endpoint) {
+        return jsonResponse(400, { error: "Missing 'endpoint' query parameter" });
+      }
+
+      switch (endpoint) {
+        case "status":
+          // Logic to fetch Jira statuses
+          const statusesUrl = `${JIRA_BASE_URL}/rest/api/3/status`;
+          const statusesResponse = await fetch(statusesUrl, { headers: baseHeaders });
+          if (!statusesResponse.ok) {
+            throw new Error(`Failed to fetch statuses: ${await statusesResponse.text()}`);
+          }
+          const statuses = await statusesResponse.json();
+          return jsonResponse(200, { statuses });
+        // Add more cases for other endpoints if needed in the future
+        default:
+          return jsonResponse(404, { error: `Unknown endpoint: ${endpoint}` });
+      }
+    }
+
     return jsonResponse(404, { error: "Endpoint not found" });
 
   } catch (error) {

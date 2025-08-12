@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ForceJiraUpdateButton } from "@/components/ForceJiraUpdateButton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useJira } from "@/hooks/useJira";
+import type { JiraContextType } from "@/contexts/JiraContext";
 import { useEffect, useState, useRef } from "react";
 
 const SprintSelector = () => {
@@ -17,7 +18,7 @@ const SprintSelector = () => {
     clearTasks,
     clearSprints,
     forceUpdate,
-  } = useJira();
+  } = useJira() as JiraContextType;
 
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | undefined>(undefined);
   const [selectedSprintId, setSelectedSprintId] = useState<string | undefined>(undefined);
@@ -26,13 +27,16 @@ const SprintSelector = () => {
 
   // 1. Fetch projects on initial component mount
   useEffect(() => {
+    console.log("SprintSelector: Calling fetchProjects...");
     fetchProjects();
   }, [fetchProjects]);
 
   // 2. Once projects are loaded, try to restore the last selected project from sessionStorage
   useEffect(() => {
+    console.log("SprintSelector: projects.length:", projects.length);
     if (projects.length > 0) {
       const lastProjectKey = sessionStorage.getItem("lastProjectKey");
+      console.log("SprintSelector: lastProjectKey from sessionStorage:", lastProjectKey);
       if (lastProjectKey && projects.some(p => p.key === lastProjectKey)) {
         setSelectedProjectKey(lastProjectKey);
         fetchSprints(lastProjectKey);

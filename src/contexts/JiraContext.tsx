@@ -2,14 +2,15 @@
 
 import { createContext, useState, useMemo, useCallback, useEffect } from 'react';
 
-const JiraContext = createContext<Record<string, unknown>>({});
+const JiraContext = createContext<JiraContextType | undefined>(undefined);
 export { JiraContext };
 import { mapJiraIssueType } from '@/helpers/issue-type-mapper';
 import { mapJiraPriority } from '@/helpers/priority-mapper';
 import { mapJiraStatus } from '@/helpers/status-mapper';
-import { getAllSprintIdsFromChangelog } from '@/helpers/sprint-history';
+import { getAllSprintIds } from '@/helpers/sprint-history';
 import type { IssueWithChangelog } from '@/helpers/sprint-history';
 import { isCarryover } from '@/helpers/is-carryover';
+import type { Task } from '@/data/schema';
 import { calculateAssigneeStats, calculateTotalStoryPointsTarget, calculateTotalTasksTarget, calculateSprintAverageComplexityTarget, calculateWeightsSum, areWeightsValid } from '@/lib/metrics';
 
 // Define interfaces
@@ -23,6 +24,68 @@ export interface JiraSprint {
   id: number;
   name: string;
   state: string;
+  startDate?: string; // Add startDate here
+}
+
+export interface AssigneeStat {
+  name: string;
+  totalTasks: number;
+  totalStoryPoints: number;
+  averageComplexity: number;
+  qaRework: number; // Retrabajos de QA
+  delaysMinutes: number; // Atrasos (Minutos)
+}
+
+// Define the JiraContextType interface
+export interface JiraContextType {
+  projects: JiraProject[];
+  sprints: JiraSprint[];
+  tasks: Task[];
+  loading: boolean;
+  error: string | null;
+  sprintInfo: JiraSprint | null;
+  uniqueStatuses: string[];
+  assigneeStats: AssigneeStat[];
+  assigneeStatsBySprint: AssigneeSprintStats;
+  setAssigneeSprintStat: (sprintId: string, assigneeName: string, field: 'qaRework' | 'delaysMinutes', value: number) => void;
+  fetchProjects: () => Promise<void>;
+  fetchSprints: (projectKey: string) => Promise<void>;
+  fetchTasks: (sprintId: number) => Promise<void>;
+  forceUpdate: (sprintId: number) => Promise<void>;
+  clearTasks: () => void;
+  clearSprints: () => void;
+  getRawTaskById: (id: string) => ApiTask | undefined;
+  sprintQuality: number;
+  setSprintQuality: (value: number) => void;
+  historicalReworkRate: number;
+  setHistoricalReworkRate: (value: number) => void;
+  perfectWorkKpiLimit: number;
+  setPerfectWorkKpiLimit: (value: number) => void;
+  weightStoryPoints: number;
+  setWeightStoryPoints: (value: number) => void;
+  weightTasks: number;
+  setWeightTasks: (value: number) => void;
+  weightComplexity: number;
+  setWeightComplexity: (value: number) => void;
+  weightRework: number;
+  setWeightRework: (value: number) => void;
+  weightDelays: number;
+  setWeightDelays: (value: number) => void;
+  weightsSum: number;
+  weightsAreValid: boolean;
+  reworkKpiUpperLimit: number;
+  setReworkKpiUpperLimit: (value: number) => void;
+  totalStoryPointsTarget: number;
+  totalTasksTarget: number;
+  sprintAverageComplexityTarget: number;
+  selectedProjectKey: string | null;
+  logMessages: string[];
+  addLogMessage: (message: string) => void;
+  users: Record<string, { name: string; avatarUrl: string; }>;
+  activeUsers: Record<string, boolean>;
+  toggleUserActivation: (accountId: string) => void;
+  userTypes: Record<string, string>;
+  setUserType: (accountId: string, type: string) => void;
 }
 
 // ...eliminado: tipo no usado...
@@ -53,6 +116,7 @@ const getKpiNumber = (key: string, fallback: number): number => {
 };
 
 export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
+  console.log("JiraProvider: Component rendering...");
   // Estado para mensajes de log de carga
   const [logMessages, setLogMessages] = useState<string[]>([]);
   const addLogMessage = useCallback((message: string) => {
@@ -163,6 +227,15 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [assigneeStatsBySprint]);
 
+  useEffect(() => {
+    if (sprints.length > 0) {
+      console.log("Lista de Sprints con fechas de inicio:");
+      sprints.forEach(sprint => {
+        console.log(`  Sprint ID: ${sprint.id}, Nombre: ${sprint.name}, Fecha de Inicio: ${sprint.startDate || 'N/A'}`);
+      });
+    }
+  }, [sprints]);
+
   const setAssigneeSprintStat = useCallback((sprintId: string, assigneeId: string, field: 'qaRework' | 'delaysMinutes', value: number) => {
     setAssigneeStatsBySprint((prev: AssigneeSprintStats) => {
       const prevSprint = prev[sprintId] || {};
@@ -192,7 +265,7 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
 
   const normalizedTasks = useMemo(() => {
     return rawTasks.map(task => {
-      const sprintHistory = getAllSprintIdsFromChangelog(task as IssueWithChangelog) || [];
+      const sprintHistory = getAllSprintIds(task as IssueWithChangelog) || [];
       const assignee = task.assignee;
       const userId = assignee?.accountId || assignee?.name;
       const userType = userId ? userTypes[userId] || "Sin tipo" : "Sin tipo";
@@ -208,11 +281,24 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
   }, [rawTasks, userTypes]);
 
   const filteredTasks = useMemo(() => {
-    const selectedSprintId = sprintInfo?.id?.toString();
-    const sprintsList = sprints.map((s, idx) => ({ id: s.id.toString(), sequence: idx }));
+    const selectedSprint = sprintInfo;
+    const allSprints = sprints;
+
     return normalizedTasks.filter(task => {
-      if (!selectedSprintId) return true;
-      return !isCarryover({ task, selectedSprintId, sprints: sprintsList });
+      if (!selectedSprint || !selectedSprint.id) return true;
+
+      // Log for ON-704 specifically
+      if (task.id === "ON-704") {
+        console.log("--- Debugging ON-704 in filteredTasks ---");
+        console.log("selectedSprint:", selectedSprint);
+        console.log("allSprints:", allSprints);
+        console.log("task.sprintHistory:", task.sprintHistory);
+        const isCarryoverResult = isCarryover({ task, selectedSprint, allSprints });
+        console.log("isCarryoverResult for ON-704:", isCarryoverResult);
+        console.log("-----------------------------------------");
+      }
+
+      return !isCarryover({ task, selectedSprint, allSprints });
     });
   }, [normalizedTasks, sprintInfo, sprints]);
 
@@ -226,16 +312,22 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
     addLogMessage("Obteniendo proyectos...");
     setError(null);
     try {
+      addLogMessage("Realizando solicitud a /api/jira/projects...");
       const response = await fetch('/api/jira/projects');
+      console.log("fetchProjects: Response received:", response);
       if (!response.ok) {
-        const { error: errMessage } = await response.json();
-        throw new Error(errMessage || 'Failed to fetch projects.');
+        const errorData = await response.json().catch(() => ({ error: 'No JSON error message' }));
+        console.error("fetchProjects: Response not OK:", response.status, errorData);
+        const errMessage = errorData.error || 'Failed to fetch projects.';
+        throw new Error(errMessage);
       }
       const data = await response.json();
+      console.log("fetchProjects: Data received:", data);
       setProjects(data.projects || []);
       addLogMessage("Proyectos obtenidos correctamente.");
     } catch (err: unknown) {
       addLogMessage("Error al obtener proyectos: " + (err instanceof Error ? err.message : String(err)));
+      console.error("fetchProjects: Caught error:", err);
       if (err instanceof Error) setError(err.message);
       else setError("Ocurrió un error desconocido al obtener los proyectos.");
       setProjects([]);
@@ -262,6 +354,7 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
       }
       const data = await response.json();
       setSprints(data.sprints || []);
+      console.log("fetchSprints: Sprints populated:", data.sprints);
       setSelectedProjectKey(projectKey);
       addLogMessage("Sprints obtenidos correctamente para el proyecto: " + projectKey);
     } catch (err: unknown) {

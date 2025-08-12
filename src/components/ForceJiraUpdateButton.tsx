@@ -1,6 +1,7 @@
 
 import { useState } from "react";
 import { useJira } from "@/hooks/useJira";
+import type { JiraContextType } from "@/contexts/JiraContext";
 import { Button } from "@/components/ui/button";
 import { RotateCw } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
@@ -28,7 +29,7 @@ export const ForceJiraUpdateButton = ({
 }: ForceJiraUpdateButtonProps) => {
   // Se asume que forceUpdate, fetchProjects y fetchSprints se pasan como props desde SprintSelector
   // Si no se pasan, se usa useJira para forceUpdate por compatibilidad
-  const { forceUpdate } = useJira();
+  const { forceUpdate } = useJira() as JiraContextType;
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 

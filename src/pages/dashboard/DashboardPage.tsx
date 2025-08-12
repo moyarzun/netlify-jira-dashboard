@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useJira } from "@/hooks/useJira";
+import type { JiraContextType } from "@/contexts/JiraContext";
 import { StatCard } from "@/components/StatCard";
 import { CheckCircle, ListTodo, Star } from "lucide-react";
 import type { Task } from "@/data/schema";
@@ -33,36 +34,13 @@ export const DashboardPage = () => {
     perfectWorkKpiLimit,
     historicalReworkRate,
     weightsSum,
-    excludeCarryover,
-    treatReviewDoneAsDone,
     reworkKpiUpperLimit,
     totalStoryPointsTarget,
     totalTasksTarget,
     sprintAverageComplexityTarget,
     logMessages,
     sprints,
-  } = useJira() as {
-    tasks: Task[];
-    sprintInfo: { id?: string | number; name?: string } | null;
-    loading: boolean;
-    assigneeStats: AssigneeStat[];
-    weightStoryPoints: number;
-    weightTasks: number;
-    weightComplexity: number;
-    weightRework: number;
-    weightDelays: number;
-    perfectWorkKpiLimit: number;
-    historicalReworkRate: number;
-    weightsSum: number;
-    excludeCarryover: boolean;
-    treatReviewDoneAsDone: boolean;
-    reworkKpiUpperLimit: number;
-    totalStoryPointsTarget: number;
-    totalTasksTarget: number;
-    sprintAverageComplexityTarget: number;
-    logMessages: string[];
-    sprints: { id: string | number }[];
-  };
+  } = useJira() as JiraContextType;
 
   const [kpis, setKpis] = useState<Record<string, number>>({});
   const [assigneeStatsCache, setAssigneeStatsCache] = useState<Record<string, { qaRework: number; delaysMinutes: number }>>({});
@@ -84,7 +62,7 @@ export const DashboardPage = () => {
     });
     setAssigneeStatsCache(cache);
     const sprintId = sprintInfo?.id ? String(sprintInfo.id) : 'unknown';
-    const kpiCacheKey = `kpis_by_sprint_${sprintId}_carryover_${excludeCarryover}_reviewdone_${treatReviewDoneAsDone}`;
+    const kpiCacheKey = `kpis_by_sprint_${sprintId}`;
     const kpiCacheRaw = localStorage.getItem(kpiCacheKey);
     let kpiCache: Record<string, number> = {};
     if (kpiCacheRaw) {
@@ -118,7 +96,7 @@ export const DashboardPage = () => {
             })),
             config,
           });
-          const kpiCacheKeyLocal = `kpis_by_sprint_${sprintId}_carryover_${excludeCarryover}_reviewdone_${treatReviewDoneAsDone}`;
+          const kpiCacheKeyLocal = `kpis_by_sprint_${sprintId}`;
           const kpiMap: Record<string, number> = {};
           const kpiCache: Record<string, number> = {};
           response.data.kpis.forEach((k: { name: string; kpi: number }) => {
@@ -135,7 +113,7 @@ export const DashboardPage = () => {
         fetchKpis();
       }
     }
-  }, [assigneeStats, sprintInfo?.id, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, perfectWorkKpiLimit, historicalReworkRate, weightsSum, reworkKpiUpperLimit, totalStoryPointsTarget, totalTasksTarget, sprintAverageComplexityTarget, excludeCarryover, treatReviewDoneAsDone]);
+  }, [assigneeStats, sprintInfo?.id, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, perfectWorkKpiLimit, historicalReworkRate, weightsSum, reworkKpiUpperLimit, totalStoryPointsTarget, totalTasksTarget, sprintAverageComplexityTarget]);
 
   const handleUpdateAssigneeStats = useCallback((assigneeName: string, qaRework: number, delaysMinutes: number) => {
     setAssigneeStatsCache(prev => ({
@@ -155,14 +133,14 @@ export const DashboardPage = () => {
     console.log('validatedTasks:', validatedTasks);
     console.log('selectedSprintId:', selectedSprintId);
   }, [tasks, validatedTasks, selectedSprintId]);
-  const sprintList = Array.isArray(sprints)
-    ? sprints.map((s, idx) => ({ id: s.id.toString(), sequence: idx }))
-    : [];
+  const selectedSprint = sprintInfo;
+  const allSprints = sprints;
+
   const carryoverTasks = tasks.filter((task: Task) =>
-    isCarryover({ task, selectedSprintId, sprints: sprintList })
+    isCarryover({ task, selectedSprint, allSprints })
   );
   const newTasks = tasks.filter((task: Task) =>
-    !isCarryover({ task, selectedSprintId, sprints: sprintList })
+    !isCarryover({ task, selectedSprint, allSprints })
   );
   const newTasksCount = newTasks.length;
   const carryoverTasksCount = carryoverTasks.length;
@@ -243,7 +221,7 @@ export const DashboardPage = () => {
                     assigneeName={stat.name}
                     tasks={assigneeTasks}
                     onUpdateStats={handleUpdateAssigneeStats}
-                    sprints={sprintList}
+                    sprints={sprints}
                     selectedSprintId={selectedSprintId}
                   >
                     <Button variant="outline" size="sm" className="mt-2 w-full">

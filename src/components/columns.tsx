@@ -1,7 +1,9 @@
 
 "use client";
+import type { JiraSprint } from '@/helpers/sprint-history';
+
 export type TableMeta = {
-  sprints?: { id: string; sequence: number }[];
+  sprints?: JiraSprint[];
   selectedSprintId?: string;
 };
 
@@ -24,10 +26,10 @@ export const columns: ColumnDef<Task>[] = [
   ),
   cell: ({ row, table }) => {
 	const meta = table.options.meta as TableMeta | undefined;
-	const sprints = meta?.sprints ?? [];
-	const selectedSprintId = meta?.selectedSprintId;
+	const allSprints = meta?.sprints ?? [];
+	const selectedSprint = allSprints.find(s => String(s.id) === meta?.selectedSprintId) || null;
 	const task = row.original;
-	const isCarry = isCarryover({ task, selectedSprintId, sprints });
+	const isCarry = isCarryover({ task, selectedSprint, allSprints });
 	const badgeClass = isCarry ? "bg-red-600 text-white" : "bg-green-600 text-white";
 	const label = isCarry ? "Carryover" : "Nueva";
 	return (

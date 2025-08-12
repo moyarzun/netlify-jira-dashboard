@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Settings2, Wrench } from "lucide-react";
 import { useJira } from "@/hooks/useJira";
+import type { JiraContextType } from "@/contexts/JiraContext";
 
 export function DashboardOptionsModal() {
   const {
@@ -19,7 +20,7 @@ export function DashboardOptionsModal() {
     weightRework, setWeightRework,
     weightDelays, setWeightDelays,
     weightsSum, weightsAreValid,
-  } = useJira();
+  } = useJira() as JiraContextType;
   const [open, setOpen] = React.useState(false);
   const [showDebug, setShowDebug] = React.useState(false);
   const [saveSuccess, setSaveSuccess] = React.useState(false);

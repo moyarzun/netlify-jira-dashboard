@@ -1,19 +1,32 @@
 // Helper para centralizar la lógica de carryover
 import type { Task } from '@/data/schema';
-// import type { JiraSprint } from '@/contexts/JiraContext';
+import type { JiraSprint } from './sprint-history';
 
 export type IsCarryoverParams = {
   task: Pick<Task, 'sprintHistory'>;
-  selectedSprintId: string | undefined;
-  sprints: { id: string; sequence: number }[]; // sprints ordenados por secuencia
+  selectedSprint: JiraSprint | null;
+  allSprints: JiraSprint[];
 };
 
-export const isCarryover = ({ task, selectedSprintId, sprints }: IsCarryoverParams): boolean => {
-  if (!selectedSprintId || !Array.isArray(task.sprintHistory) || task.sprintHistory.length === 0 || !Array.isArray(sprints)) return false;
-  // Buscar la secuencia del sprint consultado
-  const sprintMap = Object.fromEntries(sprints.map(s => [s.id, s.sequence]));
-  const currentSeq = sprintMap[selectedSprintId];
-  if (typeof currentSeq !== 'number') return false;
-  // ¿Hay algún sprint en el historial con secuencia menor?
-  return task.sprintHistory.some(id => sprintMap[id] !== undefined && sprintMap[id] < currentSeq);
+export const isCarryover = ({ task, selectedSprint, allSprints }: IsCarryoverParams): boolean => {
+  if (!selectedSprint || !selectedSprint.startDate || !Array.isArray(task.sprintHistory) || task.sprintHistory.length === 0) {
+    return false;
+  }
+
+  const selectedSprintStartDate = new Date(selectedSprint.startDate);
+
+  const sprintDatesMap = new Map<string, Date>();
+  allSprints.forEach(s => {
+    if (s.startDate) {
+      sprintDatesMap.set(String(s.id), new Date(s.startDate));
+    }
+  });
+
+  return task.sprintHistory.some(historicalSprintId => {
+    const historicalSprintDate = sprintDatesMap.get(historicalSprintId);
+    if (historicalSprintDate) {
+      return historicalSprintDate.getTime() < selectedSprintStartDate.getTime();
+    }
+    return false;
+  });
 };
