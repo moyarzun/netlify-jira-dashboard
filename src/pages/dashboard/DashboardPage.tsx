@@ -129,9 +129,6 @@ export const DashboardPage = () => {
   const selectedSprintId = sprintInfo?.id ? sprintInfo.id.toString() : '';
 
   useEffect(() => {
-    console.log('tasks:', tasks);
-    console.log('validatedTasks:', validatedTasks);
-    console.log('selectedSprintId:', selectedSprintId);
   }, [tasks, validatedTasks, selectedSprintId]);
   const selectedSprint = sprintInfo;
   const allSprints = sprints;

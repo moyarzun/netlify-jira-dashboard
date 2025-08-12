@@ -387,6 +387,34 @@ export default async (request: Request, context: Context) => {
           await cacheStore.setJSON(cacheKeyUsers, allUsers);
           return jsonResponse(200, { users: allUsers });
 
+        case "search-user":
+          const searchQuery = url.searchParams.get("query");
+          const projectKeyForSearch = url.searchParams.get("projectKey"); // New: Optional projectKey
+
+          // Allow empty query if projectKey is provided, to get all assignable users for that project
+          if (!searchQuery && !projectKeyForSearch) {
+            return jsonResponse(400, { error: "Missing 'query' parameter for search-user endpoint" });
+          }
+
+          let usersSearchUrl;
+          if (projectKeyForSearch) {
+            context.log(`Searching for assignable user "${searchQuery}" in project "${projectKeyForSearch}"`);
+            usersSearchUrl = `${JIRA_BASE_URL}/rest/api/3/user/assignable/multiProjectSearch?projectKeys=${encodeURIComponent(projectKeyForSearch)}&query=${encodeURIComponent(searchQuery)}`;
+          } else {
+            context.log(`Searching for user: ${searchQuery}`);
+            usersSearchUrl = `${JIRA_BASE_URL}/rest/api/3/user/search?query=${encodeURIComponent(searchQuery)}`;
+          }
+          
+          const usersSearchResponse = await fetch(usersSearchUrl, { headers: baseHeaders });
+
+          if (!usersSearchResponse.ok) {
+            throw new Error(`Failed to search for users: ${await usersSearchResponse.text()}`);
+          }
+
+          const searchResults = await usersSearchResponse.json();
+          context.log("User search results:", searchResults);
+          return jsonResponse(200, { users: searchResults });
+
         default:
           return jsonResponse(404, { error: `Unknown endpoint: ${endpoint}` });
       }

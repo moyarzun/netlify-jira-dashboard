@@ -123,6 +123,7 @@ export interface JiraContextType {
   setUserType: (accountId: string, type: string) => void;
   projectStatuses: JiraStatus[];
   fetchProjectStatuses: (projectKey: string) => Promise<void>;
+  searchJiraUser: (query: string) => Promise<any>; // New method
 }
 
 // Utilidad local para obtener valores de KPI desde localStorage
@@ -133,7 +134,7 @@ const getKpiNumber = (key: string, fallback: number): number => {
 };
 
 export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
-  console.log("JiraProvider: Component rendering... (New Log)");
+  
   // Estado para mensajes de log de carga
   const [logMessages, setLogMessages] = useState<string[]>([]);
   const addLogMessage = useCallback((message: string) => {
@@ -184,7 +185,7 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
       });
       setUsers(updatedUsers);
       window.localStorage.setItem('users', JSON.stringify(updatedUsers));
-      console.log("JiraContext: rawTasks updated, newUsers:", JSON.stringify(updatedUsers, null, 2));
+      console.log("Lista de Usuarios del Proyecto Seleccionado:", updatedUsers); // Added log
     }
   }, [rawTasks]);
 
@@ -194,17 +195,17 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
     return stored ? JSON.parse(stored) : {};
   });
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('activeUsers', JSON.stringify(activeUsers));
-    }
-  }, [activeUsers]);
-
   const toggleUserActivation = useCallback((userId: string) => {
-    setActiveUsers(prev => ({
-      ...prev,
-      [userId]: !prev[userId],
-    }));
+    setActiveUsers(prev => {
+      const newState = {
+        ...prev,
+        [userId]: !prev[userId],
+      };
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('activeUsers', JSON.stringify(newState)); // Update localStorage directly
+      }
+      return newState;
+    });
   }, []);
 
   const [userTypes, setUserTypes] = useState<Record<string, string>>(() => {
@@ -244,13 +245,14 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
       }
       const data = await response.json();
       const fetchedStatuses: JiraStatus[] = data.statuses || [];
+      console.log("Lista de Estados del Proyecto Seleccionado:", fetchedStatuses); // Added log
       setProjectStatuses(fetchedStatuses);
       localStorage.setItem(`projectStatuses-${projectKey}`, JSON.stringify(fetchedStatuses));
       addLogMessage(`Estados para ${projectKey} obtenidos y guardados.`);
-      console.log(`Lista de estados para el proyecto ${projectKey}:`, fetchedStatuses); // Add this line
+      
     } catch (error) {
       addLogMessage(`Error al obtener estados para ${projectKey}: ${error instanceof Error ? error.message : String(error)}`);
-      console.error(`Error fetching statuses for project ${projectKey}:`, error);
+      
     }
   }, [addLogMessage]);
 
@@ -274,17 +276,12 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       window.localStorage.setItem('assigneeStatsBySprint', JSON.stringify(assigneeStatsBySprint));
     } catch (e) {
-      console.error('Error guardando assigneeStatsBySprint:', e);
+      
     }
   }, [assigneeStatsBySprint]);
 
   useEffect(() => {
-    if (sprints.length > 0) {
-      console.log("Lista de Sprints con fechas de inicio:");
-      sprints.forEach(sprint => {
-        console.log(`  Sprint ID: ${sprint.id}, Nombre: ${sprint.name}, Fecha de Inicio: ${sprint.startDate || 'N/A'}`);
-      });
-    }
+    
   }, [sprints]);
 
   const setAssigneeSprintStat = useCallback((sprintId: string, assigneeId: string, field: 'qaRework' | 'delaysMinutes', value: number) => {
@@ -353,20 +350,19 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       addLogMessage("Realizando solicitud a /api/jira/projects...");
       const response = await fetch('/api/jira/projects');
-      console.log("fetchProjects: Response received:", response);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'No JSON error message' }));
-        console.error("fetchProjects: Response not OK:", response.status, errorData);
+        
         const errMessage = errorData.error || 'Failed to fetch projects.';
         throw new Error(errMessage);
       }
       const data = await response.json();
-      console.log("fetchProjects: Data received:", data);
+      console.log("Lista de Proyectos:", data.projects || []); // Added log
       setProjects(data.projects || []);
       addLogMessage("Proyectos obtenidos correctamente.");
     } catch (err: unknown) {
       addLogMessage("Error al obtener proyectos: " + (err instanceof Error ? err.message : String(err)));
-      console.error("fetchProjects: Caught error:", err);
+      
       if (err instanceof Error) setError(err.message);
       else setError("Ocurrió un error desconocido al obtener los proyectos.");
       setProjects([]);
@@ -392,8 +388,8 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
         throw new Error(errMessage || 'Failed to fetch sprints.');
       }
       const data = await response.json();
+      console.log("Lista de Sprints del Proyecto Seleccionado:", data.sprints || []); // Added log
       setSprints(data.sprints || []);
-      console.log("fetchSprints: Sprints populated:", data.sprints);
       setSelectedProjectKey(projectKey);
       addLogMessage("Sprints obtenidos correctamente para el proyecto: " + projectKey);
     } catch (err: unknown) {
@@ -407,7 +403,6 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
   }, [addLogMessage]);
 
   const fetchTasks = useCallback(async (sprintId: number) => {
-    console.log(`fetchTasks called for sprintId: ${sprintId}`); // Added log
     if (!sprintId) return;
     setLoading(true);
     setLogMessages([]);
@@ -426,6 +421,7 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
         throw new Error(errMessage || 'Failed to fetch tasks.');
       }
       const data = await response.json();
+      console.log("Lista de Tareas del Sprint Seleccionado:", data.issues || []); // Added log
       if (data.fromCache === true) {
         addLogMessage("Datos obtenidos desde caché.");
         try {
@@ -436,7 +432,7 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
             localStorage.setItem(cacheKey, JSON.stringify(updated));
           }
         } catch (e) {
-          console.error('Error guardando cachedSprintIds en localStorage', e);
+          
         }
       } else if (data.fromJira === true) {
         addLogMessage("Datos obtenidos directamente desde Jira.");
@@ -448,24 +444,8 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
         : Array.isArray(data.issues)
         ? data.issues
         : [];
-      console.log('fetchTasks: issues (id, assignee):', (issues as ApiTask[]).map((t: ApiTask) => ({ id: t.id, assignee: t.assignee })));
-      const usuariosUnicos = Array.from(new Set((issues as ApiTask[]).map((t: ApiTask) => t.assignee?.accountId).filter(Boolean)));
-      console.log('fetchTasks: usuarios únicos detectados:', usuariosUnicos);
-      if (usuariosUnicos.length === 0) {
-        console.warn('fetchTasks: No se detectaron usuarios asignados en las tareas.');
-      }
       setRawTasks(issues);
       addLogMessage("Tareas obtenidas correctamente para el sprint: " + sprintId);
-      console.log("JiraContext: rawTasks:", JSON.stringify(issues, null, 2));
-
-      // Log unique assignees from sprint tasks
-      if (issues && issues.length > 0) { // Added check for empty issues array
-        const uniqueAssignees = Array.from(new Set(issues.map((task: any) => task.assignee?.displayName).filter(Boolean)));
-        console.log(`Usuarios asignados a tareas en el sprint ${sprintId}:`, uniqueAssignees);
-      } else {
-        console.log(`No tasks found for sprint ${sprintId}, so no assignees to log.`);
-      }
-
     } catch (err: unknown) {
       addLogMessage("Error al obtener tareas: " + (err instanceof Error ? err.message : String(err)));
       if (err instanceof Error) setError(err.message);
@@ -519,6 +499,29 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
   const clearSprints = useCallback(() => {
     setSprints([]);
   }, []);
+
+  const searchJiraUser = useCallback(async (query: string, projectKey?: string) => { // Added optional projectKey
+    addLogMessage(`Buscando usuario en Jira: ${query}${projectKey ? ` en proyecto ${projectKey}` : ''}...`);
+    try {
+      let url = `/api/jira-proxy?endpoint=search-user&query=${encodeURIComponent(query)}`;
+      if (projectKey) {
+        url += `&projectKey=${encodeURIComponent(projectKey)}`;
+      }
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'No JSON error message' }));
+        throw new Error(errorData.error || 'Failed to search Jira user.');
+      }
+      const data = await response.json();
+      console.log(`Resultados de búsqueda para "${query}"${projectKey ? ` en proyecto "${projectKey}"` : ''}:`, data.users); // Log the results
+      addLogMessage(`Búsqueda de usuario "${query}"${projectKey ? ` en proyecto "${projectKey}"` : ''} completada.`);
+      return data.users;
+    } catch (err: unknown) {
+      addLogMessage(`Error al buscar usuario "${query}"${projectKey ? ` en proyecto "${projectKey}"` : ''}: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`Error searching for user "${query}"${projectKey ? ` in project "${projectKey}"` : ''}:`, err);
+      return [];
+    }
+  }, [addLogMessage]);
 
   const uniqueStatuses = useMemo(() => {
     const statuses = filteredTasks.map(task => task.status);
@@ -594,6 +597,7 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
     setUserType,
     projectStatuses,
     fetchProjectStatuses,
+    searchJiraUser, // New method
   }), [
     projects,
     sprints,

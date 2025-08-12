@@ -31,4 +31,5 @@ export type MenuItem = {
   path: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  children?: MenuItem[]; // Added for nested menu items
 };

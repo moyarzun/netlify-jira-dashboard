@@ -27,16 +27,14 @@ const SprintSelector = () => {
 
   // 1. Fetch projects on initial component mount
   useEffect(() => {
-    console.log("SprintSelector: Calling fetchProjects...");
+    
     fetchProjects();
   }, [fetchProjects]);
 
   // 2. Once projects are loaded, try to restore the last selected project from sessionStorage
   useEffect(() => {
-    console.log("SprintSelector: projects.length:", projects.length);
     if (projects.length > 0) {
       const lastProjectKey = sessionStorage.getItem("lastProjectKey");
-      console.log("SprintSelector: lastProjectKey from sessionStorage:", lastProjectKey);
       if (lastProjectKey && projects.some(p => p.key === lastProjectKey)) {
         setSelectedProjectKey(lastProjectKey);
         fetchSprints(lastProjectKey);
