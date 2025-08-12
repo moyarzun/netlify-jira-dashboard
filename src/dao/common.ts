@@ -1,7 +1,6 @@
-import { z } from "zod"
+import { z } from "zod";
+import type { JiraSprint } from "./jira"; // Assuming JiraSprint is in jira.ts
 
-// We're keeping a simple non-relational schema here.
-// A real app might be more complex and require a relational schema.
 export const taskSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -18,6 +17,18 @@ export const taskSchema = z.object({
   closedSprints: z.array(z.any()).optional(), // To track carry-over tasks
   sprintHistory: z.array(z.string()).optional(), // Historial de sprints por changelog
   userType: z.string().optional(), // Tipo de usuario asignado
-})
+});
 
+export type Task = z.infer<typeof taskSchema>;
 
+export type IsCarryoverParams = {
+  task: Pick<Task, 'sprintHistory'>;
+  selectedSprint: JiraSprint | null;
+  allSprints: JiraSprint[];
+};
+
+export type MenuItem = {
+  path: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+};

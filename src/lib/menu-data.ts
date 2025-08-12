@@ -1,10 +1,5 @@
 import { Home, ClipboardList } from 'lucide-react';
-
-export type MenuItem = {
-  path: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-};
+import type { MenuItem } from '@/dao/common'; // New import for MenuItem
 
 export const menuItems: MenuItem[] = [
   {

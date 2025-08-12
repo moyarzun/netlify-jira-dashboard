@@ -1,12 +1,6 @@
 // Helper para centralizar la lógica de carryover
-import type { Task } from '@/data/schema';
-import type { JiraSprint } from './sprint-history';
-
-export type IsCarryoverParams = {
-  task: Pick<Task, 'sprintHistory'>;
-  selectedSprint: JiraSprint | null;
-  allSprints: JiraSprint[];
-};
+import type { Task, IsCarryoverParams } from '@/dao/common'; // New import for Task and IsCarryoverParams
+import type { JiraSprint } from '@/dao/jira'; // New import for JiraSprint
 
 export const isCarryover = ({ task, selectedSprint, allSprints }: IsCarryoverParams): boolean => {
   if (!selectedSprint || !selectedSprint.startDate || !Array.isArray(task.sprintHistory) || task.sprintHistory.length === 0) {

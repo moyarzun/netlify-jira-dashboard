@@ -1,27 +1,4 @@
-// src/helpers/sprint-history.ts
-// Helper para obtener todos los IDs de sprints por los que pasó una tarjeta usando el changelog
-
-export type ChangelogItem = {
-  field: string;
-  fieldtype: string;
-  from?: string;
-  fromString?: string;
-  to?: string;
-  toString?: string;
-};
-
-export type History = {
-  id: string;
-  author: unknown;
-  created: string;
-  items: ChangelogItem[];
-};
-
-export type IssueWithChangelog = {
-  changelog?: {
-    histories?: History[];
-  };
-};
+import type { IssueWithChangelog, JiraSprint } from '@/dao/jira';
 
 export const getAllSprintIds = (issue: IssueWithChangelog): string[] => {
   const activeSprints = new Set<string>();
@@ -56,15 +33,6 @@ export const getAllSprintIds = (issue: IssueWithChangelog): string[] => {
 
   return Array.from(activeSprints);
 };
-
-
-
-export interface JiraSprint {
-  id: number;
-  name: string;
-  state: string;
-  startDate?: string; // Assuming startDate is available in the sprint object
-}
 
 export const getFirstSprint = (issue: IssueWithChangelog, allSprints: JiraSprint[]): string | undefined => {
   if (!issue.changelog?.histories) {

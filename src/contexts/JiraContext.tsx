@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useState, useMemo, useCallback, useEffect } from 'react';
+import { calculateAssigneeStats, calculateTotalStoryPointsTarget, calculateTotalTasksTarget, calculateSprintAverageComplexityTarget, calculateWeightsSum, areWeightsValid } from '@/lib/metrics'; 
 
 const defaultJiraContext: JiraContextType = {
   projects: [],
@@ -61,40 +62,14 @@ import { mapJiraIssueType } from '@/helpers/issue-type-mapper';
 import { mapJiraPriority } from '@/helpers/priority-mapper';
 import { mapJiraStatus } from '@/helpers/status-mapper';
 import { getAllSprintIds } from '@/helpers/sprint-history';
-import type { IssueWithChangelog } from '@/helpers/sprint-history';
+import type { IssueWithChangelog } from '@/dao/jira';
 import { isCarryover } from '@/helpers/is-carryover';
-import type { Task } from '@/data/schema';
-import { calculateAssigneeStats, calculateTotalStoryPointsTarget, calculateTotalTasksTarget, calculateSprintAverageComplexityTarget, calculateWeightsSum, areWeightsValid } from '@/lib/metrics';
+import type { Task } from '@/dao/common';
 
 // Define interfaces
-export interface JiraProject {
-  id: string;
-  key: string;
-  name: string;
-}
-
-export interface JiraSprint {
-  id: number;
-  name: string;
-  state: string;
-  startDate?: string; // Add startDate here
-}
-
-export interface AssigneeStat {
-  name: string;
-  totalTasks: number;
-  totalStoryPoints: number;
-  averageComplexity: number;
-  qaRework: number; // Retrabajos de QA
-  delaysMinutes: number; // Atrasos (Minutos)
-}
-
-export interface JiraStatus {
-  id: string;
-  name: string;
-  description?: string;
-  statusCategory?: { id: number; name: string };
-}
+// Define the JiraContextType interface
+import type { JiraProject, JiraSprint, JiraStatus, ApiTask } from '@/dao/jira'; // New import
+import type { AssigneeStat, AssigneeSprintStats } from '@/dao/kpi'; // New import for KPI types
 
 // Define the JiraContextType interface
 export interface JiraContextType {
@@ -149,26 +124,6 @@ export interface JiraContextType {
   projectStatuses: JiraStatus[];
   fetchProjectStatuses: (projectKey: string) => Promise<void>;
 }
-
-// ...eliminado: tipo no usado...
-
-// Raw task format from our API before normalization
-interface ApiTask {
-  id: string;
-  title: string;
-  status: string;
-  label: string;
-  priority: string;
-  assignee: { accountId: string; name: string; avatarUrl: string; };
-  storyPoints: number;
-  complexity: number;
-  closedSprints?: JiraSprint[]; // Use specific type
-}
-
-// ...existing code...
-
-// Definir tipo para stats por sprint y desarrollador
-type AssigneeSprintStats = Record<string, Record<string, { qaRework: number; delaysMinutes: number }>>;
 
 // Utilidad local para obtener valores de KPI desde localStorage
 const getKpiNumber = (key: string, fallback: number): number => {
@@ -382,18 +337,6 @@ export const JiraProvider = ({ children }: { children: React.ReactNode }) => {
 
     return normalizedTasks.filter(task => {
       if (!selectedSprint || !selectedSprint.id) return true;
-
-      // Log for ON-704 specifically
-      if (task.id === "ON-704") {
-        console.log("--- Debugging ON-704 in filteredTasks ---");
-        console.log("selectedSprint:", selectedSprint);
-        console.log("allSprints:", allSprints);
-        console.log("task.sprintHistory:", task.sprintHistory);
-        const isCarryoverResult = isCarryover({ task, selectedSprint, allSprints });
-        console.log("isCarryoverResult for ON-704:", isCarryoverResult);
-        console.log("-----------------------------------------");
-      }
-
       return !isCarryover({ task, selectedSprint, allSprints });
     });
   }, [normalizedTasks, sprintInfo, sprints]);
