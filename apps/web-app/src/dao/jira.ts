@@ -9,6 +9,8 @@ export interface JiraSprint {
   name: string;
   state: string;
   startDate?: string;
+  endDate?: string;
+  completeDate?: string;
 }
 
 export interface JiraStatus {

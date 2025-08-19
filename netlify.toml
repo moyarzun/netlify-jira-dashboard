@@ -41,6 +41,16 @@
   status = 200
 
 [[redirects]]
+  from = "/api/jira/users"
+  to = "/.netlify/functions/jira-users"
+  status = 200
+
+[[redirects]]
+  from = "/api/jira/statuses"
+  to = "/.netlify/functions/jira-proxy"
+  status = 200
+
+[[redirects]]
   from = "/api/jira-proxy"
   to = "/.netlify/functions/jira-proxy"
   status = 200

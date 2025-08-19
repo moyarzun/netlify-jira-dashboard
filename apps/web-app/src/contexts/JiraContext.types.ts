@@ -62,4 +62,7 @@ export interface JiraContextType {
   toggleStatusActivation: (statusId: string) => void;
   projectUsers: JiraUser[];
   projectUsersCache: Record<string, JiraUser[]>;
+  allUsers: JiraUser[];
+  setAllUsers: (users: JiraUser[]) => void;
+  fetchAllUsers: () => Promise<void>;
 }

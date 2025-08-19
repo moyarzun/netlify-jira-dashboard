@@ -27,7 +27,7 @@ export const ForceJiraUpdateButton = ({
   fetchSprints,
   onAfterUpdate,
 }: ForceJiraUpdateButtonProps) => {
-  const { forceUpdate, fetchProjects, fetchUsers, recalculateKpis } = useJira() as JiraContextType;
+  const { forceUpdate, fetchProjects, fetchAllUsers, fetchProjectStatuses, recalculateKpis } = useJira() as JiraContextType;
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +42,7 @@ export const ForceJiraUpdateButton = ({
           variant: "default",
         });
     if (typeof fetchProjects === 'function') await fetchProjects();
-    if (typeof fetchUsers === 'function') await fetchUsers('all');
+    if (typeof fetchAllUsers === 'function') await fetchAllUsers();
         toast({
           title: "Información general actualizada",
           description: "Proyectos y usuarios sincronizados desde Jira.",
@@ -86,6 +86,16 @@ export const ForceJiraUpdateButton = ({
       setLoading(true);
       let successCount = 0;
       let errorCount = 0;
+      // Also fetch users and projects when updating sprints
+      try {
+        await Promise.all([
+          fetchProjects(),
+          fetchAllUsers()
+        ]);
+      } catch (err) {
+        console.error('Error fetching projects/users:', err);
+      }
+      
       for (const id of idsToUpdate) {
         try {
           // 1. Forzar actualización desde Jira (API)
@@ -93,7 +103,10 @@ export const ForceJiraUpdateButton = ({
           // 2. Actualizar caché en memoria y sincronizar con LocalStorage
           await new Promise(res => setTimeout(res, 300));
           if (typeof fetchSprints === 'function' && selectedProjectKey) {
-            await fetchSprints(selectedProjectKey);
+            await Promise.all([
+              fetchSprints(selectedProjectKey),
+              fetchProjectStatuses(selectedProjectKey)
+            ]);
           }
           // 3. Recalcular KPIs
           if (typeof recalculateKpis === 'function') {

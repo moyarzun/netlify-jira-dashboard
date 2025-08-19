@@ -4,7 +4,7 @@ import { Switch } from '../../components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 
 const StatusesPage = () => {
-  const { projectStatuses, loading, error, activeStatuses, toggleStatusActivation } = useJira() as JiraContextType;
+  const { projectStatuses, loading, error, toggleStatusActivation } = useJira() as JiraContextType;
 
   if (loading) {
     return (
@@ -63,7 +63,7 @@ const StatusesPage = () => {
                 </TableCell>
                 <TableCell className="text-right">
                   <Switch
-                    checked={activeStatuses[status.id] === undefined ? true : activeStatuses[status.id]} // Default to active
+                    checked={status.show}
                     onCheckedChange={() => toggleStatusActivation(status.id)}
                   />
                 </TableCell>

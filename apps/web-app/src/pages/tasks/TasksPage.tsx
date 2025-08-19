@@ -8,8 +8,12 @@ import { DataTable } from "../../components/data-table";
 import { useJira } from "../../hooks/useJira";
 import { taskSchema } from "../../data/schema";
 export default function TasksPage() {
-  const { tasks, loading: isLoading, sprints, sprintInfo } = useJira() as JiraContextType;
+  const { tasksCache, loading: isLoading, sprints, sprintInfo } = useJira() as JiraContextType;
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+
+  // Get tasks from cache for selected sprint
+  const selectedSprintId = sprintInfo?.id?.toString() || '';
+  const tasks = selectedSprintId ? (tasksCache[selectedSprintId] || []) : [];
 
   // Ensure tasks are validated against the schema
   const validatedTasks = z.array(taskSchema).parse(tasks);
@@ -22,7 +26,7 @@ export default function TasksPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Tasks</h2>
           <p className="text-muted-foreground">
-            Here&apos;s a list of your tasks for this sprint!
+            {sprintInfo ? `Tasks for ${sprintInfo.name} (${tasks.length} tasks)` : 'Select a sprint to view tasks'}
           </p>
         </div>
       </div>

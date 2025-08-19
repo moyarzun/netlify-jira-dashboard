@@ -143,6 +143,7 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                   <TableHead>Prioridad</TableHead>
                   <TableHead className="text-right">Puntos de Historia</TableHead>
                   <TableHead>Tipo de Usuario</TableHead>
+                  <TableHead>Fecha de Asignación</TableHead>
                   <TableHead>Última Actualización</TableHead>
                 </TableRow>
               </TableHeader>
@@ -232,6 +233,30 @@ export function AssigneeTasksModal({ assigneeName, tasks, children, onUpdateStat
                         >
                           {userType}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {/* Fecha de asignación del usuario actual */}
+                        {(() => {
+                          if (!task.assigneeHistory || !Array.isArray(task.assigneeHistory)) {
+                            return 'Sin registro';
+                          }
+                          
+                          // Buscar la fecha más reciente en que este usuario fue asignado
+                          const userAssignments = task.assigneeHistory.filter(
+                            (entry: any) => entry.assignee === assigneeName
+                          );
+                          
+                          if (userAssignments.length === 0) {
+                            return 'Sin registro';
+                          }
+                          
+                          // Tomar la asignación más reciente
+                          const latestAssignment = userAssignments[userAssignments.length - 1];
+                          return new Date(latestAssignment.assignedDate).toLocaleString('es-CL', { 
+                            dateStyle: 'short', 
+                            timeStyle: 'short' 
+                          });
+                        })()}
                       </TableCell>
                       <TableCell>
                         {/* Fecha de última actualización: solo sincronización local */}

@@ -251,6 +251,44 @@ export const handler: Handler = async (event, context) => {
       return { statusCode: 200, headers, body: JSON.stringify({ projects }) };
     }
 
+    // --- Endpoint: /api/jira/statuses ---
+    if (path.includes("/api/jira/statuses")) {
+      if (!projectKey) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: "Missing projectKey" }) };
+      }
+
+      console.log(`[DEBUG] Fetching statuses for project: ${projectKey}`);
+      
+      const statusesUrl = `${JIRA_BASE_URL}/rest/api/3/project/${projectKey}/statuses`;
+      const statusesResponse = await fetch(statusesUrl, { headers: baseHeaders });
+      if (!statusesResponse.ok) {
+        throw new Error(`Failed to fetch statuses: ${await statusesResponse.text()}`);
+      }
+
+      const statusesData = await statusesResponse.json();
+      const allStatuses: any[] = [];
+      
+      // Extract statuses from all issue types
+      statusesData.forEach((issueType: any) => {
+        if (issueType.statuses) {
+          issueType.statuses.forEach((status: any) => {
+            if (!allStatuses.find(s => s.id === status.id)) {
+              allStatuses.push({
+                id: status.id,
+                name: status.name,
+                description: status.description || '',
+                statusCategory: status.statusCategory
+              });
+            }
+          });
+        }
+      });
+      
+      console.log(`[DEBUG] Found ${allStatuses.length} unique statuses`);
+
+      return { statusCode: 200, headers, body: JSON.stringify({ statuses: allStatuses }) };
+    }
+
     // --- Endpoint: /api/jira/issues ---
     if (path.includes("/api/jira/issues")) {
       console.log(`[DEBUG] /api/jira/issues called with sprintId: ${sprintId}`);
@@ -262,9 +300,10 @@ export const handler: Handler = async (event, context) => {
         "summary", "status", "labels", "priority", "assignee",
         "customfield_10331", // Story points (Story point estimate)
         "customfield_10127", // Sprint field
-        "closedSprints", "issuetype"
+        "closedSprints", "issuetype", "created"
       ].join(",");
 
+      // Get tasks from specific sprint
       const jql = `sprint = ${sprintId} ORDER BY created DESC`;
       const issuesUrl = `${JIRA_BASE_URL}/rest/api/3/search?jql=${encodeURIComponent(jql)}&fields=${fields}&expand=changelog&maxResults=100`;
       

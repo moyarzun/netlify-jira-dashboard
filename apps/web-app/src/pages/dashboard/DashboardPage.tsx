@@ -7,48 +7,45 @@ import type { JiraContextType } from "../../contexts/JiraContext.types";
 import { AssigneeTasksModal } from "../../components/AssigneeTasksModal";
 import { DashboardOptionsModal } from "../../components/DashboardOptionsModal";
 import { Button } from "../../components/ui/button";
+import { calculateFinalKpi, type KpiInputs, type KpiWeights } from "../../lib/kpiCalculators";
+import { shouldIncludeTaskForKpi, getUserKpiTasks } from "../../lib/sprintDateFilter";
 
 
 
 export const DashboardPage = () => {
   const { 
-    projects, sprints, tasksCache, selectedProjectKey, sprintInfo, loading, fetchTasks,
-    weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, historicalReworkRate, perfectWorkKpiLimit, kpiRecalcTrigger
+    projects, sprints, tasksCache, selectedProjectKey, sprintInfo, loading, fetchTasks, allUsers,
+    weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, historicalReworkRate, perfectWorkKpiLimit, kpiRecalcTrigger,
+    assigneeStatsBySprint, setAssigneeSprintStat, sprintQuality, tasksProcessed, recalculateKpis
   } = useJira() as JiraContextType;
   
   // Get tasks from cache for selected sprint
   const selectedSprintId = sprintInfo?.id?.toString() || '';
-  const tasks = selectedSprintId ? (tasksCache[selectedSprintId] || []) : [];
-  
-
-  
-
+  const sprintTasks = selectedSprintId ? (tasksCache[selectedSprintId] || []) : [];
   
   // Use sprintInfo from context
   const selectedSprint = sprintInfo;
 
-
-  
-  // Separate new vs carryover tasks using API classification
-  const newTasks = tasks.filter((task: any) => task.isCarryover !== true);
-  const carryoverTasks = tasks.filter((task: any) => task.isCarryover === true);
+  // Separate new vs carryover tasks using API classification (for summary cards)
+  const newTasks = sprintTasks.filter((task: any) => task.isCarryover !== true);
+  const carryoverTasks = sprintTasks.filter((task: any) => task.isCarryover === true);
   
 
   
-  // Calculate metrics
-  const totalTasks = tasks.length;
+  // Calculate metrics for summary cards (only sprint tasks)
+  const totalTasks = sprintTasks.length;
   const newTasksCount = newTasks.length;
   const carryoverTasksCount = carryoverTasks.length;
   
-  const totalStoryPoints = tasks.reduce((acc: number, task: any) => acc + (task.storyPoints || 0), 0);
+  const totalStoryPoints = sprintTasks.reduce((acc: number, task: any) => acc + (task.storyPoints || 0), 0);
   const newStoryPoints = newTasks.reduce((acc: number, task: any) => acc + (task.storyPoints || 0), 0);
   const carryoverStoryPoints = carryoverTasks.reduce((acc: number, task: any) => acc + (task.storyPoints || 0), 0);
   
-  const tasksDone = tasks.filter((task: any) => task.status === 'Done' || task.status === 'done').length;
+  const tasksDone = sprintTasks.filter((task: any) => task.status === 'Done' || task.status === 'done').length;
   
-  // Group ALL tasks by assignee (for details modal) but calculate KPIs based only on new tasks - memoized
+  // Group ALL tasks by assignee (for details modal) but calculate KPIs based on sprint date assignment - memoized
   const assigneeStatsArray = useMemo(() => {
-    const assigneeStats = tasks.reduce((acc: any, task: any) => {
+    const assigneeStats = sprintTasks.reduce((acc: any, task: any) => {
       const assigneeName = task.assignee?.displayName || task.assignee?.name || 'Unassigned';
       if (!acc[assigneeName]) {
         acc[assigneeName] = {
@@ -61,8 +58,8 @@ export const DashboardPage = () => {
           tasks: []
         };
       }
-      // Only count new tasks for KPI calculations
-      if (task.isCarryover !== true) {
+      // Count tasks assigned to user during sprint period for KPI calculations
+      if (shouldIncludeTaskForKpi(task, assigneeName, selectedSprint?.startDate, selectedSprint?.completeDate)) {
         acc[assigneeName].totalTasks += 1;
         acc[assigneeName].totalStoryPoints += task.storyPoints || 0;
       }
@@ -91,104 +88,69 @@ export const DashboardPage = () => {
     });
     
     return Object.values(assigneeStats);
-  }, [tasks, newTasks]);
+  }, [sprintTasks, selectedSprint?.startDate, selectedSprint?.completeDate]);
   
-  // Load KPI configuration from localStorage
+  // Load KPI configuration from assigneeStatsBySprint
   const [kpis, setKpis] = useState<Record<string, number>>({});
   
   useEffect(() => {
-    // Load cached KPIs first
     const sprintId = selectedSprintId || 'unknown';
-    const kpiCacheKey = `kpis_by_sprint_${sprintId}`;
-    const kpiCacheRaw = localStorage.getItem(kpiCacheKey);
-    if (kpiCacheRaw) {
-      try {
-        const kpiCache = JSON.parse(kpiCacheRaw);
-        setKpis(kpiCache);
-        return;
-      } catch {
-        // Continue to calculate KPIs if cache fails
-      }
+    
+    // Load cached KPIs from assigneeStatsBySprint
+    if (assigneeStatsBySprint[sprintId]?.assigneeKpis) {
+      const cachedKpis: Record<string, number> = {};
+      assigneeStatsBySprint[sprintId].assigneeKpis.forEach((assignee: any) => {
+        cachedKpis[assignee.name] = assignee.globalKpi;
+      });
+      setKpis(cachedKpis);
+      return;
     }
     
-    // Calculate KPIs if no cache or assignee stats available
-    if (assigneeStatsArray.length > 0) {
+    // Calculate KPIs if no cache or assignee stats available AND tasks are processed
+    if (assigneeStatsArray.length > 0 && tasksProcessed[sprintId]) {
       // Calculate dynamic targets based on sprint totals
       const targetStoryPoints = newStoryPoints / 2;
       const targetTasks = newTasksCount / 2;
       const sprintComplexity = newTasksCount > 0 ? newStoryPoints / newTasksCount : 0;
       
       const calculateKpi = (stat: any) => {
-        // Use KPI configuration from context (already loaded from localStorage)
+        const inputs: KpiInputs = {
+          userStoryPoints: stat.totalStoryPoints,
+          userTasks: stat.totalTasks,
+          userQaRework: stat.qaRework,
+          userDelaysMinutes: stat.delaysMinutes,
+          targetStoryPoints,
+          targetTasks,
+          historicalReworkRate,
+          perfectWorkKpiLimit
+        };
         
-        const weightsSum = weightStoryPoints + weightTasks + weightComplexity + weightRework + weightDelays;
+        const weights: KpiWeights = {
+          weightStoryPoints,
+          weightTasks,
+          weightComplexity,
+          weightRework,
+          weightDelays
+        };
         
-        // Step-by-step calculations with intermediate values
-        const storyPointsRatio = targetStoryPoints > 0 ? stat.totalStoryPoints / targetStoryPoints : 0;
-        const storyPointsKpi = storyPointsRatio * (weightStoryPoints / 100);
+        const { components, finalKpi } = calculateFinalKpi(inputs, weights);
         
-        const tasksRatio = targetTasks > 0 ? stat.totalTasks / targetTasks : 0;
-        const tasksKpi = tasksRatio * (weightTasks / 100);
-        
-        const userComplexity = stat.totalTasks > 0 ? stat.totalStoryPoints / stat.totalTasks : 0;
-        const targetComplexity = targetTasks > 0 ? targetStoryPoints / targetTasks : 0;
-        const complexityRatio = targetComplexity > 0 ? userComplexity / targetComplexity : 0;
-        const complexityKpi = complexityRatio * (weightComplexity / 100);
-        
-        const reworkRatio = historicalReworkRate > 0 ? stat.qaRework / historicalReworkRate : 0;
-        const reworkPct = Math.max((perfectWorkKpiLimit / 100) - reworkRatio, 0);
-        const reworkKpi = reworkPct * (weightRework / 100);
-        
-        const delaysRatio = stat.delaysMinutes / 60;
-        const delaysPct = Math.max(1 - delaysRatio, 0);
-        const delaysKpi = delaysPct * (weightDelays / 100);
-        
-        const kpiRaw = storyPointsKpi + tasksKpi + complexityKpi + reworkKpi + delaysKpi;
-        const finalKpi = Math.round(kpiRaw * 100);
+        const kpiTasks = getUserKpiTasks(sprintTasks, stat.name, selectedSprint?.startDate, selectedSprint?.completeDate);
         
         console.log(`[KPI_CALCULATION] ${stat.name}:`, {
-          inputs: {
-            userStoryPoints: stat.totalStoryPoints,
-            userTasks: stat.totalTasks,
-            userQaRework: stat.qaRework,
-            userDelaysMinutes: stat.delaysMinutes,
-            targetStoryPoints,
-            targetTasks,
-            historicalReworkRate
-          },
-          ratios: {
-            storyPointsRatio: storyPointsRatio.toFixed(4),
-            tasksRatio: tasksRatio.toFixed(4),
-            userComplexity: userComplexity.toFixed(4),
-            targetComplexity: targetComplexity.toFixed(4),
-            complexityRatio: complexityRatio.toFixed(4),
-            reworkRatio: reworkRatio.toFixed(4),
-            delaysRatio: delaysRatio.toFixed(4)
-          },
-          percentages: {
-            reworkPct: reworkPct.toFixed(4),
-            delaysPct: delaysPct.toFixed(4)
-          },
-          weights: {
-            weightStoryPoints: `${weightStoryPoints}% (${weightStoryPoints/100})`,
-            weightTasks: `${weightTasks}% (${weightTasks/100})`,
-            weightComplexity: `${weightComplexity}% (${weightComplexity/100})`,
-            weightRework: `${weightRework}% (${weightRework/100})`,
-            weightDelays: `${weightDelays}% (${weightDelays/100})`
-          },
-          kpiComponents: {
-            storyPointsKpi: storyPointsKpi.toFixed(6),
-            tasksKpi: tasksKpi.toFixed(6),
-            complexityKpi: complexityKpi.toFixed(6),
-            reworkKpi: reworkKpi.toFixed(6),
-            delaysKpi: delaysKpi.toFixed(6)
-          },
-          finalCalculation: {
-            summation: `${storyPointsKpi.toFixed(6)} + ${tasksKpi.toFixed(6)} + ${complexityKpi.toFixed(6)} + ${reworkKpi.toFixed(6)} + ${delaysKpi.toFixed(6)}`,
-            kpiRaw: kpiRaw.toFixed(6),
-            kpiRawTimes100: (kpiRaw * 100).toFixed(2),
-            finalKpi,
-            formula: `(${storyPointsKpi.toFixed(6)} + ${tasksKpi.toFixed(6)} + ${complexityKpi.toFixed(6)} + ${reworkKpi.toFixed(6)} + ${delaysKpi.toFixed(6)}) × 100 = ${finalKpi}%`
+          inputs,
+          weights,
+          components,
+          finalKpi,
+          kpiTasks: kpiTasks.map(t => {
+            const dateStr = t.assignedDate && t.assignedDate !== 'Unknown' 
+              ? new Date(t.assignedDate).toLocaleDateString('es-CL') 
+              : 'No date';
+            return `${t.taskId} (assigned: ${dateStr}, points: ${t.storyPoints})`;
+          }),
+          sprintDates: {
+            startDate: selectedSprint?.startDate,
+            completeDate: selectedSprint?.completeDate
           }
         });
         
@@ -196,16 +158,47 @@ export const DashboardPage = () => {
       };
       
       const newKpis: Record<string, number> = {};
+      const assigneeKpis: any[] = [];
+      
       assigneeStatsArray.forEach((stat: any) => {
-        newKpis[stat.name] = calculateKpi(stat);
+        const kpiResult = calculateKpi(stat);
+        newKpis[stat.name] = kpiResult;
+        assigneeKpis.push({
+          name: stat.name,
+          globalKpi: kpiResult,
+          totalTasks: stat.totalTasks,
+          totalStoryPoints: stat.totalStoryPoints,
+          averageComplexity: stat.averageComplexity,
+          qaRework: stat.qaRework,
+          delaysMinutes: stat.delaysMinutes
+        });
       });
       
       setKpis(newKpis);
       
-      // Cache the calculated KPIs
-      localStorage.setItem(kpiCacheKey, JSON.stringify(newKpis));
+      // Store in assigneeStatsBySprint structure
+      const sprintStats = {
+        sprintId: parseInt(sprintId),
+        stats: {
+          kpi_sprintQuality: sprintQuality,
+          kpi_historicalReworkRate: historicalReworkRate,
+          kpi_perfectWorkKpiLimit: perfectWorkKpiLimit,
+          kpi_weightStoryPoints: weightStoryPoints,
+          kpi_weightTasks: weightTasks,
+          kpi_weightComplexity: weightComplexity,
+          kpi_weightRework: weightRework,
+          kpi_weightDelays: weightDelays,
+          targetStoryPoints,
+          targetTasks,
+          newStoryPoints,
+          newTasksCount
+        },
+        assigneeKpis
+      };
+      
+      setAssigneeSprintStat(sprintId, sprintStats);
     }
-  }, [selectedSprintId, assigneeStatsArray.length, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, historicalReworkRate, perfectWorkKpiLimit, newStoryPoints, newTasksCount, kpiRecalcTrigger]);
+  }, [selectedSprintId, assigneeStatsArray.length, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, historicalReworkRate, perfectWorkKpiLimit, newStoryPoints, newTasksCount, kpiRecalcTrigger, tasksProcessed]);
 
 
 
@@ -222,8 +215,16 @@ export const DashboardPage = () => {
         </h2>
         <div className="flex items-center space-x-2">
           <span className="text-sm text-gray-600">
-            Project: {selectedProjectKey || 'None'} | Tasks: {totalTasks} | Points: {totalStoryPoints}
+            {selectedSprint?.startDate && (
+              <>Inicio: {new Date(selectedSprint.startDate).toLocaleDateString('es-CL')}</>
+            )}
+            {(selectedSprint?.endDate || selectedSprint?.completeDate) && (
+              <> | Fin: {new Date(selectedSprint.endDate || selectedSprint.completeDate!).toLocaleDateString('es-CL')}</>
+            )}
           </span>
+          <Button onClick={recalculateKpis} variant="outline" size="sm">
+            Recalcular KPIs
+          </Button>
           <DashboardOptionsModal />
         </div>
       </div>
@@ -252,7 +253,12 @@ export const DashboardPage = () => {
       </div>
       
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {assigneeStatsArray.map((stat: any) => (
+        {assigneeStatsArray
+          .filter((stat: any) => {
+            const user = allUsers.find(u => u.displayName === stat.name || u.name === stat.name);
+            return user?.active === true;
+          })
+          .map((stat: any) => (
           <Card key={stat.name}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-base font-semibold">{stat.name}</CardTitle>

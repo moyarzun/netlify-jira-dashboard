@@ -2,6 +2,7 @@ import type { ApiTask } from '../dao/jira';
 import React, { createContext, useState, useMemo, useEffect, useCallback } from 'react';
 import type { JiraProject, JiraSprint, JiraUser, JiraStatus } from '../dao/jira';
 import type { JiraContextType } from './JiraContext.types';
+import { addAssigneeHistoryMiddleware } from '../lib/assigneeHistoryMiddleware';
 
 export const JiraContext = createContext<JiraContextType>({} as JiraContextType);
 
@@ -12,6 +13,10 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
   const [projectUsers, setProjectUsers] = useState<JiraUser[]>([])
   const [projectUsersCache, setProjectUsersCache] = useState<Record<string, JiraUser[]>>({})
   const [users, setUsers] = useState<Record<string, { name: string; avatarUrl: string }>>({})
+  const [allUsers, setAllUsers] = useState<JiraUser[]>(() => {
+    const cached = localStorage.getItem('jiraUsers')
+    return cached ? JSON.parse(cached) : []
+  })
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null)
   const [sprintInfo, setSprintInfo] = useState<JiraSprint | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
@@ -21,10 +26,18 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
   const [sprintsCache, setSprintsCache] = useState<Record<string, JiraSprint[]>>({})
   const [tasksCache, setTasksCache] = useState<Record<string, ApiTask[]>>({})
   const [activeUsers, setActiveUsers] = useState<Record<string, boolean>>({})
-  const [userTypes, setUserTypes] = useState<Record<string, string>>({})
+  const [userTypes, setUserTypes] = useState<Record<string, string>>(() => {
+    const cached = localStorage.getItem('jiraUserTypes')
+    return cached ? JSON.parse(cached) : {}
+  })
   const [projectStatuses, setProjectStatuses] = useState<JiraStatus[]>([])
+  const [statusesCache, setStatusesCache] = useState<Record<string, JiraStatus[]>>({})
   const [kpiCardVisibility, setKpiCardVisibility] = useState<Record<string, boolean>>({})
   const [activeStatuses, setActiveStatuses] = useState<Record<string, boolean>>({})
+  const [assigneeStatsBySprint, setAssigneeStatsBySprint] = useState<Record<string, any>>(() => {
+    const cached = localStorage.getItem('assigneeStatsBySprint')
+    return cached ? JSON.parse(cached) : {}
+  })
   
   // KPI Configuration State
   const [sprintQuality, setSprintQuality] = useState<number>(() => 
@@ -91,6 +104,7 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
   
   // KPI recalculation trigger state
   const [kpiRecalcTrigger, setKpiRecalcTrigger] = useState(0)
+  const [tasksProcessed, setTasksProcessed] = useState<Record<string, boolean>>({})
   
   // Function to recalculate KPIs and clear cache
   const recalculateKpis = useCallback(() => {
@@ -98,12 +112,33 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
     const sprintId = sprintInfo?.id?.toString()
     if (sprintId) {
       console.log('[RECALCULATE_KPIS] Clearing KPI cache for sprint:', sprintId)
-      localStorage.removeItem(`kpis_by_sprint_${sprintId}`)
+      setAssigneeStatsBySprint(prev => {
+        const updated = { ...prev }
+        delete updated[sprintId]
+        localStorage.setItem('assigneeStatsBySprint', JSON.stringify(updated))
+        return updated
+      })
       console.log('[RECALCULATE_KPIS] KPI cache cleared - triggering recalculation')
-      // Force trigger KPI recalculation by updating state
       setKpiRecalcTrigger(prev => prev + 1)
     }
   }, [sprintInfo?.id])
+
+  const toggleStatusActivation = useCallback((statusId: string) => {
+    setProjectStatuses(prev => {
+      const updated = prev.map(status => 
+        status.id === statusId 
+          ? { ...status, show: !status.show }
+          : status
+      );
+      
+      // Save to localStorage
+      if (selectedProjectKey) {
+        localStorage.setItem(`projectStatuses_${selectedProjectKey}`, JSON.stringify(updated));
+      }
+      
+      return updated;
+    });
+  }, [selectedProjectKey]);
 
   const fetchProjects = useCallback(async () => {
     console.log('[FETCH_PROJECTS] Starting...');
@@ -121,6 +156,7 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
         console.log('[FETCH_PROJECTS] Setting projects:', data.projects.length);
         setProjects(data.projects);
         setProjectsCache(data.projects);
+        localStorage.setItem('jiraProjects', JSON.stringify(data.projects));
       }
     } catch (err) {
       console.error('[FETCH_PROJECTS] Error:', err);
@@ -147,12 +183,115 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
         console.log('[FETCH_SPRINTS] Setting sprints:', data.sprints.length);
         setSprints(data.sprints);
         setSprintsCache(prev => ({ ...prev, [projectKey]: data.sprints }));
+        localStorage.setItem(`jiraSprints-${projectKey}`, JSON.stringify(data.sprints));
       }
     } catch (err) {
       console.error('[FETCH_SPRINTS] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch sprints');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const fetchProjectStatuses = useCallback(async (projectKey: string) => {
+    if (!projectKey) return;
+    console.log('[FETCH_STATUSES] Starting for project:', projectKey);
+    try {
+      const response = await fetch('/api/jira/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectKey })
+      });
+      console.log('[FETCH_STATUSES] Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[FETCH_STATUSES] API error:', response.status, errorText);
+        setError(`API error: ${response.status} - ${errorText}`);
+        return;
+      }
+      
+      const data = await response.json();
+      console.log('[FETCH_STATUSES] Data:', data);
+      if (data.statuses) {
+        // Middleware: Add show field to statuses
+        const statusesWithShow = data.statuses.map((status: any) => ({
+          ...status,
+          show: status.show !== undefined ? status.show : true
+        }));
+        
+        console.log('[FETCH_STATUSES] Setting statuses:', statusesWithShow.length);
+        setProjectStatuses(statusesWithShow);
+        setStatusesCache(prev => ({ ...prev, [projectKey]: statusesWithShow }));
+        localStorage.setItem(`projectStatuses_${projectKey}`, JSON.stringify(statusesWithShow));
+        setError(null); // Clear any previous errors
+      }
+    } catch (err) {
+      console.error('[FETCH_STATUSES] Error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch statuses');
+    }
+  }, []);
+
+  // Load project statuses from localStorage when project changes
+  useEffect(() => {
+    if (selectedProjectKey) {
+      const cached = localStorage.getItem(`projectStatuses_${selectedProjectKey}`);
+      if (cached) {
+        try {
+          const statuses = JSON.parse(cached);
+          setProjectStatuses(statuses);
+          setError(null); // Clear any previous errors
+        } catch (e) {
+          console.error('Error loading cached statuses:', e);
+        }
+      } else {
+        fetchProjectStatuses(selectedProjectKey);
+      }
+    }
+  }, [selectedProjectKey, fetchProjectStatuses]);
+
+  const fetchAllUsers = useCallback(async () => {
+    console.log('[FETCH_USERS] Starting...');
+    try {
+      const response = await fetch('/api/jira/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await response.json();
+      console.log('[FETCH_USERS] Response:', data);
+      if (data.users) {
+        // Load existing user settings from localStorage
+        const existingUsers = localStorage.getItem('jiraUsers');
+        const existingUserSettings: Record<string, any> = {};
+        
+        if (existingUsers) {
+          try {
+            const parsed = JSON.parse(existingUsers);
+            parsed.forEach((user: any) => {
+              existingUserSettings[user.accountId] = {
+                active: user.active,
+                userType: user.userType,
+              };
+            });
+          } catch (e) {
+            console.error('[FETCH_USERS] Error parsing existing users:', e);
+          }
+        }
+        
+        // Merge API data with existing local settings
+        const usersWithActiveStatus = data.users.map((user: any) => ({
+          ...user,
+          active: existingUserSettings[user.accountId]?.active ?? false,
+          userType: existingUserSettings[user.accountId]?.userType ?? 'Sin tipo'
+        }));
+        
+        console.log('[FETCH_USERS] Setting users:', usersWithActiveStatus.length);
+        setAllUsers(usersWithActiveStatus);
+        localStorage.setItem('jiraUsers', JSON.stringify(usersWithActiveStatus));
+      }
+    } catch (err) {
+      console.error('[FETCH_USERS] Error:', err);
     }
   }, []);
 
@@ -194,7 +333,8 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
       
       if (data.issues) {
         console.log('[FETCH_TASKS] Processing', data.issues.length, 'issues');
-        const tasksWithCarryover = data.issues.map((task: any) => {
+        // Apply middlewares: carryover classification + assignee history
+        let processedTasks = data.issues.map((task: any) => {
           const firstSprint = task.sprintHistory && Array.isArray(task.sprintHistory) && task.sprintHistory.length > 0 
             ? task.sprintHistory[0] 
             : null;
@@ -208,9 +348,14 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
           };
         });
         
+        // Add assignee history middleware
+        const tasksWithCarryover = addAssigneeHistoryMiddleware(processedTasks);
+        
         console.log('[FETCH_TASKS] Processed tasks:', tasksWithCarryover.length);
+        console.log('[FETCH_TASKS] Sample task with assigneeHistory:', tasksWithCarryover[0]?.assigneeHistory);
         setTasksCache(prev => ({ ...prev, [sprintId.toString()]: tasksWithCarryover }));
         localStorage.setItem(`jiraTasks-${sprintId}`, JSON.stringify(tasksWithCarryover));
+        setTasksProcessed(prev => ({ ...prev, [sprintId.toString()]: true }));
         return tasksWithCarryover;
       } else {
         console.log('[FETCH_TASKS] No issues in response');
@@ -239,8 +384,14 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
     setSprintInfo,
     uniqueStatuses: [],
     assigneeStats: [],
-    assigneeStatsBySprint: {},
-    setAssigneeSprintStat: () => {},
+    assigneeStatsBySprint,
+    setAssigneeSprintStat: (sprintId: string, stats: any) => {
+      setAssigneeStatsBySprint(prev => {
+        const updated = { ...prev, [sprintId]: stats }
+        localStorage.setItem('assigneeStatsBySprint', JSON.stringify(updated))
+        return updated
+      })
+    },
     fetchProjects,
     fetchSprints,
     fetchTasks,
@@ -256,16 +407,13 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
           });
           const data = await response.json();
           if (data.issues) {
-            // Add carryover classification middleware
-
-            const tasksWithCarryover = data.issues.map((task: any) => {
+            // Apply middlewares: carryover classification + assignee history
+            let processedTasks = data.issues.map((task: any) => {
               const firstSprint = task.sprintHistory && Array.isArray(task.sprintHistory) && task.sprintHistory.length > 0 
                 ? task.sprintHistory[0] 
                 : null;
               
               const isCarryover = firstSprint ? String(firstSprint) !== String(sprintId) : false;
-              
-
               
               return {
                 ...task,
@@ -274,8 +422,12 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
               };
             });
             
+            // Add assignee history middleware
+            const tasksWithCarryover = addAssigneeHistoryMiddleware(processedTasks);
+            
             setTasksCache(prev => ({ ...prev, [sprintId.toString()]: tasksWithCarryover }));
             localStorage.setItem(`jiraTasks-${sprintId}`, JSON.stringify(tasksWithCarryover));
+            setTasksProcessed(prev => ({ ...prev, [sprintId.toString()]: true }));
           }
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Failed to force update tasks');
@@ -285,6 +437,7 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
       } else if (selectedProjectKey) {
         // Force update projects and sprints
         await fetchProjects();
+        localStorage.setItem('jiraProjects', JSON.stringify(projects));
         await fetchSprints(selectedProjectKey);
       }
     },
@@ -322,29 +475,40 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
     setUsers,
     activeUsers,
     setActiveUsers,
-    toggleUserActivation: () => {},
+    toggleUserActivation: (accountId: string) => {
+      setAllUsers(prev => {
+        const updated = prev.map(user => {
+          if (user.accountId === accountId) {
+            const newActive = !user.active;
+            console.log(`[TOGGLE_USER] ${user.displayName}: ${user.active} → ${newActive}`);
+            return { ...user, active: newActive };
+          }
+          return user;
+        });
+        localStorage.setItem('jiraUsers', JSON.stringify(updated));
+        return updated;
+      });
+    },
   userTypes,
   setUserTypes,
     setUserType: (accountId: string, type: string) => {
-      setUserTypes(prev => ({
-        ...prev,
-        [accountId]: type
-      }))
+      setUserTypes(prev => {
+        const updated = { ...prev, [accountId]: type }
+        localStorage.setItem('jiraUserTypes', JSON.stringify(updated))
+        return updated
+      })
+      // Also update the user object in allUsers
+      setAllUsers(prev => {
+        const updated = prev.map(user => 
+          user.accountId === accountId ? { ...user, userType: type } : user
+        )
+        localStorage.setItem('jiraUsers', JSON.stringify(updated))
+        return updated
+      })
     },
     projectStatuses,
     setProjectStatuses,
-    fetchProjectStatuses: async (projectKey: string) => {
-      if (!projectKey) return;
-      try {
-        const response = await fetch(`/api/jira-proxy?endpoint=status&projectKey=${projectKey}`);
-        const data = await response.json();
-        if (data.statuses) {
-          setProjectStatuses(data.statuses);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch statuses');
-      }
-    },
+    fetchProjectStatuses,
     fetchUsers: async () => {
       try {
         const response = await fetch('/api/jira-proxy?endpoint=all-users');
@@ -366,14 +530,18 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
     setTasksCache,
     activeStatuses,
     setActiveStatuses,
-    toggleStatusActivation: () => {},
+    toggleStatusActivation,
     projectUsers,
     setProjectUsers,
     projectUsersCache,
     setProjectUsersCache,
+    allUsers,
+    setAllUsers,
+    fetchAllUsers,
     recalculateKpis,
     kpiRecalcTrigger,
-  }), [projects, sprints, loading, error, sprintInfo, logMessages, users, projectUsers, projectUsersCache, selectedProjectKey, projectsCache, sprintsCache, tasksCache, activeUsers, userTypes, projectStatuses, kpiCardVisibility, activeStatuses, initialized, fetchProjects, fetchSprints, fetchTasks, sprintQuality, historicalReworkRate, perfectWorkKpiLimit, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, weightsSum, weightsAreValid, recalculateKpis, kpiRecalcTrigger])
+    tasksProcessed,
+  }), [projects, sprints, loading, error, sprintInfo, logMessages, users, projectUsers, projectUsersCache, selectedProjectKey, projectsCache, sprintsCache, tasksCache, activeUsers, userTypes, projectStatuses, kpiCardVisibility, activeStatuses, initialized, fetchProjects, fetchSprints, fetchTasks, sprintQuality, historicalReworkRate, perfectWorkKpiLimit, weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, weightsSum, weightsAreValid, recalculateKpis, kpiRecalcTrigger, allUsers, fetchAllUsers, setAllUsers, tasksProcessed]);
 
   // Initialize data on first load
   useEffect(() => {
@@ -381,8 +549,11 @@ export function JiraProvider({ children }: { children: React.ReactNode }) {
       if (initialized) return;
       setInitialized(true);
       
-      // First fetch projects from API
-      await fetchProjects();
+      // Fetch projects and users in parallel
+      await Promise.all([
+        fetchProjects(),
+        fetchAllUsers()
+      ]);
       
       // Load projects from localStorage first
       const projectsCache = localStorage.getItem('jiraProjects');
