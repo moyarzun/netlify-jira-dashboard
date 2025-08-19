@@ -1,0 +1,62 @@
+import { Link } from "react-router-dom";
+import Menu from "./Menu";
+import { ScrollArea } from "../ui/scroll-area";
+import { Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "../ui/drawer";
+
+interface SidebarProps {
+  isSidebarOpen: boolean;
+  toggleSidebar: () => void;
+}
+
+const Sidebar = ({ isSidebarOpen, toggleSidebar }: SidebarProps) => {
+  const content = (
+    <>
+      <div className="flex items-center justify-center h-16 border-b">
+        <Link to="/" className="flex items-center justify-center h-full" aria-label="Inicio">
+          <img src="/logotipo.png" alt="OneApp logo" className="h-10 w-auto" />
+        </Link>
+      </div>
+      <ScrollArea className="flex-1">
+        <Menu />
+      </ScrollArea>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r">
+        {content}
+      </aside>
+
+      {/* Mobile Drawer */}
+      <div className="md:hidden">
+        <Drawer open={isSidebarOpen} onOpenChange={toggleSidebar}>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>
+                <Link
+                  to="/"
+                  className="flex items-center justify-center h-full"
+                  aria-label="Inicio"
+                  onClick={toggleSidebar}
+                >
+                  <img src="/logotipo.png" alt="OneApp logo" className="h-10 w-auto" />
+                </Link>
+              </DrawerTitle>
+            </DrawerHeader>
+            <ScrollArea className="flex-1 px-4">
+              <Menu />
+            </ScrollArea>
+          </DrawerContent>
+        </Drawer>
+      </div>
+    </>
+  );
+};
+
+export default Sidebar;

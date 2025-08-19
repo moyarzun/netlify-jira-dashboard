@@ -1,15 +1,4 @@
-interface NetlifyEvent {
-  httpMethod: string;
-  body: string | null;
-}
 
-interface NetlifyResponse {
-  statusCode: number;
-  body: string;
-  headers?: Record<string, string>;
-}
-
-type Handler = (event: NetlifyEvent) => Promise<NetlifyResponse> | NetlifyResponse;
 
 interface AssigneeStat {
   name: string;
@@ -31,7 +20,10 @@ interface KpiConfig {
   weightsSum: number;
 }
 
-function calculateKpi(stat: AssigneeStat, config: KpiConfig): number {
+function calculateKpi(
+  stat: AssigneeStat,
+  config: KpiConfig
+): number {
   const { weightStoryPoints, weightTasks, weightComplexity, weightRework, weightDelays, perfectWorkKpiLimit, historicalReworkRate, weightsSum } = config;
   const storyPoints = stat.totalStoryPoints;
   const tasksCount = stat.totalTasks;
@@ -53,34 +45,42 @@ function calculateKpi(stat: AssigneeStat, config: KpiConfig): number {
   return kpi;
 }
 
-export const handler: Handler = async (event: NetlifyEvent) => {
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Method not allowed' }),
-    };
+
+// Vite/Express handler
+import type { IncomingMessage, ServerResponse } from 'http';
+
+export default async function handler(req: IncomingMessage & { method?: string }, res: ServerResponse & { statusCode?: number; setHeader: (name: string, value: string) => void; end: (data: string) => void }) {
+  if (req.method !== 'POST') {
+    res.statusCode = 405;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'Method not allowed' }));
+    return;
   }
-  try {
-    const body = JSON.parse(event.body || '{}');
-    const { assigneeStats, config } = body;
-    if (!Array.isArray(assigneeStats) || typeof config !== 'object') {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Invalid input' }),
-      };
+  let body = '';
+  req.on('data', chunk => {
+    body += chunk;
+  });
+  req.on('end', () => {
+    try {
+      const parsed = JSON.parse(body);
+      const { assigneeStats, config } = parsed;
+      if (!Array.isArray(assigneeStats) || typeof config !== 'object') {
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Invalid input' }));
+        return;
+      }
+      const kpis = assigneeStats.map((stat: AssigneeStat) => ({
+        name: stat.name,
+        kpi: calculateKpi(stat, config),
+      }));
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ kpis }));
+    } catch {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
     }
-    const kpis = assigneeStats.map((stat: AssigneeStat) => ({
-      name: stat.name,
-      kpi: calculateKpi(stat, config),
-    }));
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ kpis }),
-    };
-  } catch {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Invalid JSON' }),
-    };
-  }
-};
+  });
+}

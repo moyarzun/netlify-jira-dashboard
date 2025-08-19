@@ -1,15 +1,4 @@
-interface NetlifyEvent {
-  httpMethod: string;
-  body: string | null;
-}
-
-interface NetlifyResponse {
-  statusCode: number;
-  body: string;
-  headers?: Record<string, string>;
-}
-
-type Handler = (event: NetlifyEvent) => Promise<NetlifyResponse> | NetlifyResponse;
+import type { Request, Response } from 'express';
 
 interface AssigneeStat {
   name: string;
@@ -53,34 +42,23 @@ function calculateKpi(stat: AssigneeStat, config: KpiConfig): number {
   return kpi;
 }
 
-export const handler: Handler = async (event: NetlifyEvent) => {
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Method not allowed' }),
-    };
+export function kpiApiHandler(req: Request, res: Response) {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
   try {
-    const body = JSON.parse(event.body || '{}');
-    const { assigneeStats, config } = body;
+    const { assigneeStats, config } = req.body;
     if (!Array.isArray(assigneeStats) || typeof config !== 'object') {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Invalid input' }),
-      };
+      res.status(400).json({ error: 'Invalid input' });
+      return;
     }
     const kpis = assigneeStats.map((stat: AssigneeStat) => ({
       name: stat.name,
       kpi: calculateKpi(stat, config),
     }));
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ kpis }),
-    };
+    res.status(200).json({ kpis });
   } catch {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Invalid JSON' }),
-    };
+    res.status(400).json({ error: 'Invalid JSON' });
   }
-};
+}

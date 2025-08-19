@@ -15,7 +15,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": [
-        "src/*"
+        "apps/web-app/src/*"
       ]
     },
     "noEmit": true,
@@ -29,5 +29,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["apps/web-app/src"]
 }

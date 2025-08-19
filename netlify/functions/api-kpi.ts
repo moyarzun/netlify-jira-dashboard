@@ -1,4 +1,16 @@
-import type { Handler } from '@netlify/functions';
+interface NetlifyEvent {
+  httpMethod: string;
+  body: string | null;
+}
+
+interface NetlifyResponse {
+  statusCode: number;
+  body: string;
+  headers?: Record<string, string>;
+}
+
+type Handler = (event: NetlifyEvent) => Promise<NetlifyResponse> | NetlifyResponse;
+
 interface AssigneeStat {
   name: string;
   totalTasks: number;
@@ -60,7 +72,7 @@ function calculateKpi(stat: AssigneeStat, config: KpiConfig): number {
   return kpi;
 }
 
-export const handler: Handler = async (event) => {
+export const handler: Handler = async (event: NetlifyEvent) => {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,

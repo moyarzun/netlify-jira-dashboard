@@ -1,30 +1,49 @@
 # netlify.toml
 
 [build]
-  # Comando para construir el proyecto. Se ejecuta desde la raíz.
-  command = "vite build"
-  # Directorio donde se publica el resultado del build.
+  command = "npm run build"
   publish = "dist"
-  # Directorio donde se encuentran las edge functions.
-  edge_functions = "netlify/edge-functions"
-  # Directorio donde se encuentran las serverless functions.
-  functions = "netlify/functions"
-
+  base = "apps/web-app"
+  [build.environment]
+    NETLIFY_EXPERIMENTAL_BUILD_NODE_VERSION = "18"
 
 [dev]
-  command = "vite"
+  command = "npm run dev"
+  targetPort = 5173
+  framework = "#custom"
 
 [functions]
+  directory = "../../netlify/functions"
+  included_files = ["../../netlify/functions/**"]
   [functions."*"]
   node_bundler = "esbuild"
   external_node_modules = ["@netlify/blobs"]
 
-[[edge_functions]]
-path = "/api/*"
-function = "jira-proxy"
-excludedPattern = "^/netlify/blobs/|^/api/kpi"
 
+[[redirects]]
+  from = "/api/jira/config"
+  to = "/.netlify/functions/jira-config"
+  status = 200
 
+[[redirects]]
+  from = "/api/jira/projects"
+  to = "/.netlify/functions/jira-proxy"
+  status = 200
+
+[[redirects]]
+  from = "/api/jira/sprints"
+  to = "/.netlify/functions/jira-proxy"
+  status = 200
+
+[[redirects]]
+  from = "/api/jira/issues"
+  to = "/.netlify/functions/jira-proxy"
+  status = 200
+
+[[redirects]]
+  from = "/api/jira-proxy"
+  to = "/.netlify/functions/jira-proxy"
+  status = 200
 
 [[redirects]]
   from = "/api/kpi"
